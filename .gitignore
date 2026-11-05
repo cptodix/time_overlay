@@ -218,3 +218,8 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Time Overlay build artifacts
+artifacts/
+*.AppImage
+*.AppImage.zsync

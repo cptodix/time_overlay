@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-3.0-or-later
+set -e
+
+HERE="$(dirname "$(readlink -f "$0")")"
+exec "$HERE/usr/bin/time-overlay" "$@"

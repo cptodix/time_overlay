@@ -1,0 +1,11 @@
+[Desktop Entry]
+Type=Application
+Name=Time Overlay
+GenericName=Clock, Stopwatch and Timer Overlay
+Comment=Always-on-top clock, stopwatch and countdown timer
+Exec=time-overlay
+Icon=time-overlay
+Terminal=false
+Categories=Utility;Clock;
+Keywords=clock;stopwatch;timer;overlay;countdown;
+StartupWMClass=time-overlay

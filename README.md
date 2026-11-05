@@ -25,7 +25,7 @@ The three columns always keep their width. In Clock mode the right column is bla
 - **Outlined text** — custom `OutlinedLabel` paints white glyphs with a 3 px black `QPainterPath` stroke for visibility over any content.
 - **Fixed three-column layout** — mode column, time column, controls column. The time font is fitted on window resize and mode/text changes, not when panels are hidden, so the clock does not grow when the cursor leaves.
 - **Ghost mode** — panel contents and the dark rounded background disappear when the cursor leaves the window; the columns stay in place and the outlined time remains.
-- **Drag handle** — a visible top-right grip moves the window; the bottom-right grip resizes it. Both use Qt's system move/resize when available, which is the portable path on Wayland, with a direct-geometry fallback.
+- **Drag handle** — a long, centered bar across the top moves the window; the bottom-right grip resizes it. Both use Qt's system move/resize when available, which is the portable path on Wayland, with a direct-geometry fallback.
 - **Always on top** — frameless tool window with Windows native topmost re-enforcement every 2 seconds, plus a periodic Linux restack attempt and X11 utility hints.
 - **Remembers position** — window geometry and clock format are stored with `QSettings`.
 
@@ -60,7 +60,7 @@ python -m time_overlay
 
 - **Hover** over the window to reveal the panel contents, the drag/resize grips, and the dark rounded background.
 - **Move the cursor outside** the window to enter ghost mode: only the outlined time stays visible. The fixed three-column layout means the time does not move or grow.
-- **Drag** the top-right handle to reposition the window.
+- **Drag** the centered bar across the top to reposition the window.
 - **Resize** with the grip in the bottom-right corner.
 - **Right-click** anywhere for the context menu: center on screen, switch 12/24-hour clock, or quit.
 - The `Quit` button in the left panel also exits the app.
@@ -167,9 +167,9 @@ QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
 ```
 
 - `tests/test_core.py` covers the Qt-free stopwatch/countdown state machines and formatting.
-- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, the drag/resize grips, the set dialog, and the app icon.
+- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, the drag/resize grips, the set dialog (including a pixel check that field values are painted white), and the app icon.
 
-The suite currently contains **35 tests**.
+The suite currently contains **37 tests**.
 
 ## Project layout
 

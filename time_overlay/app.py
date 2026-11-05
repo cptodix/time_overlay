@@ -16,6 +16,7 @@ except ImportError:  # pragma: no cover - QtSvg ships with PyQt6
     pass
 
 from . import __version__
+from .theme import dark_palette
 from .window import TimeOverlayWindow
 
 
@@ -29,6 +30,7 @@ def _icon_path() -> Path | None:
 
 def main(argv: list[str] | None = None) -> int:
     app = QApplication(argv if argv is not None else sys.argv)
+    app.setPalette(dark_palette())
     app.setApplicationName("Time Overlay")
     app.setApplicationDisplayName("Time Overlay")
     app.setOrganizationName("Time Overlay")

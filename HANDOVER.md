@@ -21,7 +21,7 @@ This document is the fast path for a new maintainer or agent. It explains what e
 - The app has no keyboard focus by design (`WindowDoesNotAcceptFocus`), so every core action must remain mouse-accessible.
 - Packaging is script-driven: `packaging/build_windows.bat` and `packaging/build_linux.sh`. There is no `pyproject.toml` / pip-installable package.
 - Releases are manual `workflow_dispatch` runs. The workflow calculates the next `vX.Y.Z` tag from the last tag, runs tests/builds, creates the tag, and publishes the release. It no longer triggers on tag pushes.
-- Current test suite: **35 tests**, all passing headlessly. `ruff check .` and `ruff format --check .` pass.
+- Current test suite: **37 tests**, all passing headlessly. `ruff check .` and `ruff format --check .` pass.
 - Biggest known gap: the app's `time_overlay/__init__.py` version is still static `1.0.0`; the release workflow creates tags but does not update the source version.
 
 ---
@@ -32,7 +32,7 @@ At the time this note was written:
 
 - The implementation and this handover document were present in the working tree (`git status` showed new `time_overlay/`, `tests/`, `packaging/`, `main.py`, `requirements*.txt`, `.github/`, and `HANDOVER.md`).
 - `.gitignore` and `README.md` were modified.
-- The test suite passed headlessly (35 tests), and ruff checks passed.
+- The test suite passed headlessly (37 tests), and ruff checks passed.
 - The release workflow YAML was validated structurally, and its version-bump/tag logic was exercised locally in temporary git repositories.
 - A Linux AppImage was built and run headlessly during development. The generated `build/`, `dist/`, and `.ruff_cache/` outputs were removed afterward.
 - Native Windows building and real X11/Wayland compositor behavior were **not** exercised in the development environment; CI/build scripts cover them conceptually but need a real target machine or GitHub runner to confirm.
@@ -91,19 +91,19 @@ main.py
 ```
 TimeOverlayWindow (QWidget, frameless, translucent)
 └── QFrame#container (rounded dark background / fully transparent in ghost mode)
-    ├── left_panel (QWidget, fixed 156 px)
+    ├── left_panel (QWidget, fixed 120 px)
     │   ├── "MODE" label
     │   ├── Clock / Stopwatch / Timer buttons (QButtonGroup, checkable)
     │   ├── format button (visible only in Clock mode)
     │   └── Quit button
     ├── center (QWidget, expanding)
     │   └── OutlinedLabel (QPainterPath white fill + black stroke)
-    ├── right_panel (QWidget, fixed 190 px)
+    ├── right_panel (QWidget, fixed 96 px)
     │   ├── "CONTROLS" label
     │   ├── Start/Pause
     │   ├── Reset
     │   └── Set (Timer only; hidden in Stopwatch/Clock)
-    ├── DragHandle (custom 24x16 top-right grip, hidden in ghost mode)
+    ├── DragHandle (long top-center bar, hidden in ghost mode)
     └── ResizeGrip (custom 16x16 bottom-right grip, hidden in ghost mode)
 ```
 
@@ -170,7 +170,7 @@ Active text updates:
 
 ### 4.6 Drag and resize flow
 
-- `DragHandle` (custom 24×16 top-right grip) is the only window-drag mechanism. It is visible on hover and hidden in ghost mode.
+- `DragHandle` is a long, horizontally centered bar across the top of the container. It is the only window-drag mechanism, visible on hover and hidden in ghost mode.
 - `ResizeGrip` (custom 16×16 bottom-right grip) resizes the top-level window, clamped to `MINIMUM_SIZE` (720×220).
 - Both grips first try `QWindow.startSystemMove()` / `QWindow.startSystemResize()` so the compositor/WM can perform the operation. This is the portable path on Wayland. If either returns `False`, they fall back to manual `move()`/`resize()` geometry, which is the reliable path on X11/Windows.
 - Both grips are direct children of the container, not part of a panel, so they are unaffected by panel-content visibility.
@@ -226,14 +226,14 @@ Not persisted: mode, timer duration, stopwatch state. The app always starts in C
 | Path | Responsibility |
 |---|---|
 | `main.py` | Direct/PyInstaller entry point |
-| `time_overlay/app.py` | `QApplication` bootstrap, metadata, and runtime app icon |
+| `time_overlay/app.py` | `QApplication` bootstrap, dark palette, metadata, and runtime app icon |
 | `time_overlay/window.py` | Main window, layout, modes, hover, drag, resize, flash, context menu, settings |
 | `time_overlay/outlined_label.py` | `OutlinedLabel`: `QPainterPath` stroke/fill, centering, binary-search font fitting |
 | `time_overlay/core.py` | Qt-free `Stopwatch`, `CountdownTimer`, formatters |
 | `time_overlay/dialogs.py` | Modal HH:MM:SS picker with presets and explicit −/+ buttons |
-| `time_overlay/widgets.py` | `DragHandle` and `ResizeGrip` custom widgets |
+| `time_overlay/widgets.py` | `DragHandle`, `ResizeGrip`, and the custom-painted `TimeField` |
 | `time_overlay/platform_hints.py` | Windows `SetWindowPos` topmost enforcement; Linux X11 utility/dock attributes |
-| `time_overlay/theme.py` | Active/ghost/menu/dialog QSS |
+| `time_overlay/theme.py` | Active/ghost/menu/dialog QSS and the application-wide `dark_palette()` |
 | `tests/test_core.py` | Deterministic state-machine and formatter tests |
 | `tests/test_ui.py` | Offscreen UI smoke tests |
 | `packaging/build_windows.bat` | PyInstaller one-file Windows build |
@@ -313,7 +313,7 @@ A 2-second `QTimer` in `platform_hints._setup_linux()` calls `reassert_topmost()
 
 ### 6.11 The three-column layout is fixed
 
-The left (`156 px`) and right (`190 px`) panel widgets are never removed from the layout. Hover/Clock/Stopwatch/Timer changes only toggle the visibility of their **contents**:
+The left (`120 px`) and right (`96 px`) panel widgets are never removed from the layout. Hover/Clock/Stopwatch/Timer changes only toggle the visibility of their **contents**:
 
 - Clock: left contents visible when hovered; right contents hidden (blank column).
 - Stopwatch: left + Start/Pause + Reset; `Set` hidden.
@@ -348,6 +348,33 @@ The tag should only exist if tests and both builds succeeded. The `prepare` job 
 
 The release workflow's tag-existence check compares the remote tag SHA directly to `GITHUB_SHA`. That assumes a lightweight tag. If you switch to annotated tags, update the check to peel `^{}` and compare the commit SHA.
 
+### 6.17 The dialog uses a custom-painted `TimeField`, not `QSpinBox`
+
+`QSpinBox` delegates its value to an internal `QLineEdit`. Under some native
+styles/platform palettes that editor ignores the stylesheet color, so the
+number is invisible even though editing still works (the user can type and the
+`Set` button enables, but the field looks empty). Palette and QSS overrides
+were not reliable across Breeze/GTK/platform themes.
+
+The dialog therefore uses `widgets.TimeField`, which paints its own rounded
+background, white 18 px digits, and caret with `QPainter`. It keeps the
+expected behaviour without depending on a native text widget:
+
+- type digits to replace/increment the value,
+- Backspace deletes the last digit, Delete resets to zero,
+- Up/Down and the mouse wheel step by one,
+- Tab/Shift+Tab traverse fields, Enter clears focus,
+- `+`/`−` buttons and presets call `setValue()`,
+- values are clamped to the field's min/max (for example minutes `0..59`).
+
+`tests/test_ui.py::test_set_dialog_values_are_painted_white` renders the dialog
+and asserts white pixels exist inside every field, so this regression cannot
+come back silently. Do not replace `TimeField` with `QSpinBox` unless you also
+verify digit contrast under the target platform style.
+
+The application-wide `dark_palette()` is still applied in `app.main()` for
+labels, buttons, menus, and any future native widgets.
+
 ---
 
 ## 7. Tests and quality gates
@@ -364,7 +391,7 @@ ruff format --check .
 ### What is covered
 
 - `tests/test_core.py` (19 tests): stopwatch start/pause/resume/toggle, including reset-while-running and reset-while-paused; countdown start/pause/reset/set/tick/finish/restart; 12/24-hour formatting including midnight/noon; stopwatch/countdown formatting and rounding.
-- `tests/test_ui.py` (16 tests): required window flags/attributes and `WA_QuitOnClose`; app icon loading; initial Clock/ghost state; content visibility and background on hover; mode text; clock format toggle and active-mode text preservation; font growth on resize; font/layout stability across ghost mode; background timer completion; stopwatch controls and reset-while-running; timer reset gating; drag handle; resize grip; set-dialog quit behavior; spinbox text palette.
+- `tests/test_ui.py` (18 tests): required window flags/attributes and `WA_QuitOnClose`; app icon loading; initial Clock/ghost state; content visibility and background on hover; mode text; clock format toggle and active-mode text preservation; font growth on resize; font/layout stability across ghost mode; background timer completion; stopwatch controls and reset-while-running; timer reset gating; drag handle; resize grip; set-dialog quit behavior; dark palette values; `TimeField` typing/clamping; and a pixel check that every set-dialog value is painted white.
 
 ### What is **not** covered automatically
 
@@ -594,10 +621,10 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 | Black or square background on Linux | No compositor, or translucency unsupported. Enable compositing; test on X11. |
 | Overlay is not above fullscreen apps | Windows: check the 2 s topmost timer / `SetWindowPos`. X11: try `TIME_OVERLAY_X11_DOCK=1`. Wayland: compositor policy. |
 | Cannot type in the Set dialog | Window manager refused focus for a non-activating parent. Use the −/+ buttons or presets. |
-| Set dialog numbers are invisible | Rebuild; `_make_spinbox()` sets an explicit white QPalette and the dialog QSS sets `selection-color`/`selection-background-color`. Check a custom system palette/style is not overriding it. |
+| Set dialog numbers are invisible | The dialog should use `widgets.TimeField` (custom-painted digits), not `QSpinBox`. If you see empty fields, confirm `dialogs.py` imports `TimeField`, rebuild, and run `test_set_dialog_values_are_painted_white`. `TimeField.paintEvent` sets an explicit white `QPainter` pen, so native styles cannot hide the value. |
 | Closing the Set dialog exits the app | Verify `TimeOverlayWindow` has `WA_QuitOnClose=True` and `TimeSetDialog` has `WA_QuitOnClose=False`. Tool windows default to false; QDialog defaults to true. |
 | Timer Reset button is disabled | By design while the timer is running. Pause first; `_update_control_labels()` re-enables it. |
-| Window cannot be dragged | Use the top-right drag handle (six dots). It tries the compositor `startSystemMove()` first and falls back to manual `move()`. On Wayland, the compositor may still refuse client-initiated moves. Drag-anywhere was intentionally removed. |
+| Window cannot be dragged | Use the long drag bar across the top (five centered dots). It tries the compositor `startSystemMove()` first and falls back to manual `move()`. On Wayland, the compositor may still refuse client-initiated moves. Drag-anywhere was intentionally removed. |
 | Time text grows when the cursor leaves | The fixed 3-column layout / transparent 1 px ghost border is not in effect, or something is calling `_fit_time_font()` on hover. |
 | Overlay drops below other windows after focus change | Linux: the 2 s `raise_()` timer is best-effort; X11 WMs may need `TIME_OVERLAY_X11_DOCK=1`; Wayland compositors may ignore raise/topmost requests entirely. |
 | Keyboard shortcuts do nothing | By design: `WindowDoesNotAcceptFocus`. Use mouse/context menu. |
@@ -623,9 +650,9 @@ Ghost mode is visual only. The transparent window area still receives mouse even
   - [ ] Stopwatch Start/Pause/Reset; Reset while running keeps it running from zero.
   - [ ] Timer Set/presets/start/pause; Reset is disabled while running; reset after pausing; zero flash and beep.
   - [ ] Hover reveals panel contents; leaving enters ghost mode; the time text does not move or grow.
-  - [ ] Drag the top-right handle; bottom-right grip resizes.
+  - [ ] Drag the centered top bar; bottom-right grip resizes.
   - [ ] Closing the Set dialog via Set/Cancel/window close does not quit the app.
-  - [ ] Spinbox values are clearly visible.
+  - [ ] Timer field values are clearly visible and editable (type, +/−, presets).
   - [ ] Right-click menu: center, format, quit.
   - [ ] Geometry and 24-hour setting survive restart.
 - [ ] Build the Linux AppImage and run it (`APPIMAGE_EXTRACT_AND_RUN=1` if no FUSE).

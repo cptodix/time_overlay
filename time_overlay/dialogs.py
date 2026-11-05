@@ -4,19 +4,18 @@
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
-from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QDialog,
     QGridLayout,
     QHBoxLayout,
     QLabel,
     QPushButton,
-    QSpinBox,
     QVBoxLayout,
     QWidget,
 )
 
 from .theme import DIALOG_STYLESHEET
+from .widgets import TimeField
 
 _MAX_SECONDS = 99 * 3600 + 59 * 60 + 59
 
@@ -77,9 +76,9 @@ class TimeSetDialog(QDialog):
 
         fields = QHBoxLayout()
         fields.setSpacing(12)
-        self._hours = self._make_spinbox(hours, 0, 99)
-        self._minutes = self._make_spinbox(minutes, 0, 59)
-        self._seconds = self._make_spinbox(seconds, 0, 59)
+        self._hours = self._make_value_field("Hours", hours, 0, 99)
+        self._minutes = self._make_value_field("Minutes", minutes, 0, 59)
+        self._seconds = self._make_value_field("Seconds", seconds, 0, 59)
         fields.addWidget(self._make_field("HOURS", self._hours))
         fields.addWidget(self._make_field("MINUTES", self._minutes))
         fields.addWidget(self._make_field("SECONDS", self._seconds))
@@ -119,8 +118,8 @@ class TimeSetDialog(QDialog):
         buttons.addWidget(self._ok_button)
         root.addLayout(buttons)
 
-        for spinbox in (self._hours, self._minutes, self._seconds):
-            spinbox.valueChanged.connect(self._update_ok_button)
+        for field in (self._hours, self._minutes, self._seconds):
+            field.valueChanged.connect(self._update_ok_button)
         self._update_ok_button()
 
         self.adjustSize()
@@ -159,36 +158,18 @@ class TimeSetDialog(QDialog):
 
     # -------------------------------------------------------------- helpers
     @staticmethod
-    def _make_spinbox(value: int, minimum: int, maximum: int) -> QSpinBox:
-        spinbox = QSpinBox()
-        spinbox.setRange(minimum, maximum)
-        spinbox.setValue(value)
-        spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        spinbox.setMinimumWidth(56)
-        # The built-in arrows are hard to see on a dark stylesheet, so the
-        # dialog uses explicit -/+ buttons instead.
-        spinbox.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
-        spinbox.setAccelerated(True)
-
-        # QSS alone is not reliable for the internal line edit on every
-        # platform/style; set the palette explicitly so the value stays white.
-        palette = spinbox.palette()
-        palette.setColor(QPalette.ColorRole.Base, QColor("#262626"))
-        palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
-        palette.setColor(QPalette.ColorRole.WindowText, QColor("#ffffff"))
-        palette.setColor(QPalette.ColorRole.ButtonText, QColor("#ffffff"))
-        palette.setColor(QPalette.ColorRole.Highlight, QColor("#2f7fd6"))
-        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
-        spinbox.setPalette(palette)
-        line_edit = spinbox.lineEdit()
-        if line_edit is not None:
-            line_edit.setPalette(palette)
-        return spinbox
+    def _make_value_field(
+        label: str, value: int, minimum: int, maximum: int
+    ) -> TimeField:
+        field = TimeField(value, minimum, maximum)
+        field.setAccessibleName(label)
+        field.setToolTip(f"{label}: type a number, use the arrows or +/−")
+        return field
 
     @staticmethod
-    def _make_field(label: str, spinbox: QSpinBox) -> QWidget:
-        field = QWidget()
-        layout = QVBoxLayout(field)
+    def _make_field(label: str, field: TimeField) -> QWidget:
+        container = QWidget()
+        layout = QVBoxLayout(container)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(5)
 
@@ -212,14 +193,14 @@ class TimeSetDialog(QDialog):
             button.setAutoRepeatDelay(300)
             button.setAutoRepeatInterval(80)
 
-        minus.clicked.connect(lambda: spinbox.setValue(spinbox.value() - 1))
-        plus.clicked.connect(lambda: spinbox.setValue(spinbox.value() + 1))
+        minus.clicked.connect(lambda: field.setValue(field.value() - 1))
+        plus.clicked.connect(lambda: field.setValue(field.value() + 1))
 
         row.addWidget(minus)
-        row.addWidget(spinbox, 1)
+        row.addWidget(field, 1)
         row.addWidget(plus)
         layout.addLayout(row)
-        return field
+        return container
 
     def _total_seconds(self) -> int:
         return (

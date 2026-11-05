@@ -12,10 +12,12 @@ os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 from PyQt6.QtCore import QEvent, QPoint, QPointF, QSettings, Qt
 from PyQt6.QtGui import QIcon, QMouseEvent, QPalette
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication, QSpinBox
+from PyQt6.QtWidgets import QApplication
 
 from time_overlay.app import _icon_path
 from time_overlay.dialogs import TimeSetDialog
+from time_overlay.theme import dark_palette
+from time_overlay.widgets import TimeField
 from time_overlay.window import Mode, TimeOverlayWindow
 
 
@@ -272,14 +274,57 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(dialog.testAttribute(Qt.WidgetAttribute.WA_QuitOnClose))
         dialog.deleteLater()
 
-    def test_set_dialog_spinbox_text_is_visible(self) -> None:
-        dialog = TimeSetDialog(self.window, initial_seconds=300)
-        spinboxes = dialog.findChildren(QSpinBox)
-        self.assertEqual(len(spinboxes), 3)
-        for spinbox in spinboxes:
-            self.assertEqual(
-                spinbox.palette().color(QPalette.ColorRole.Text).name(),
-                "#ffffff",
+    def test_dark_palette_keeps_editor_text_visible(self) -> None:
+        palette = dark_palette()
+        self.assertEqual(palette.color(QPalette.ColorRole.Text).name(), "#ffffff")
+        self.assertEqual(palette.color(QPalette.ColorRole.Base).name(), "#262626")
+        self.assertEqual(
+            palette.color(QPalette.ColorRole.HighlightedText).name(), "#ffffff"
+        )
+
+    def test_time_field_typing_and_clamping(self) -> None:
+        field = TimeField(0, 0, 59)
+        field.show()
+        field.setFocus()
+        self.app.processEvents()
+
+        QTest.keyClicks(field, "12")
+        self.assertEqual(field.value(), 12)
+
+        QTest.keyClick(field, Qt.Key.Key_Backspace)
+        self.assertEqual(field.value(), 1)
+
+        QTest.keyClick(field, Qt.Key.Key_Up)
+        self.assertEqual(field.value(), 2)
+
+        QTest.keyClick(field, Qt.Key.Key_Down)
+        self.assertEqual(field.value(), 1)
+
+        field.setValue(150)
+        self.assertEqual(field.value(), 59)
+        field.setValue(-5)
+        self.assertEqual(field.value(), 0)
+        field.deleteLater()
+
+    def test_set_dialog_values_are_painted_white(self) -> None:
+        dialog = TimeSetDialog(self.window, initial_seconds=3723)
+        dialog.show()
+        self.app.processEvents()
+        self.app.processEvents()
+
+        fields = dialog.findChildren(TimeField)
+        self.assertEqual(len(fields), 3)
+        image = dialog.grab().toImage()
+        for field in fields:
+            origin = field.mapTo(dialog, QPoint(0, 0))
+            white = 0
+            for y in range(origin.y(), origin.y() + field.height()):
+                for x in range(origin.x(), origin.x() + field.width()):
+                    color = image.pixelColor(x, y)
+                    if color.red() > 200 and color.green() > 200 and color.blue() > 200:
+                        white += 1
+            self.assertGreater(
+                white, 15, f"no visible white digits for value {field.value()}"
             )
         dialog.deleteLater()
 

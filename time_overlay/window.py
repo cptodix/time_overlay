@@ -115,7 +115,7 @@ class TimeOverlayWindow(QWidget):
 
         # --------------------------------------------------------- left panel
         self.left_panel = QWidget(self.container)
-        self.left_panel.setFixedWidth(156)
+        self.left_panel.setFixedWidth(120)
         left = QVBoxLayout(self.left_panel)
         left.setContentsMargins(0, 0, 0, 0)
         left.setSpacing(8)
@@ -176,7 +176,7 @@ class TimeOverlayWindow(QWidget):
 
         # -------------------------------------------------------- right panel
         self.right_panel = QWidget(self.container)
-        self.right_panel.setFixedWidth(190)
+        self.right_panel.setFixedWidth(96)
         right = QVBoxLayout(self.right_panel)
         right.setContentsMargins(0, 0, 0, 0)
         right.setSpacing(8)
@@ -302,10 +302,9 @@ class TimeOverlayWindow(QWidget):
                 max(0, self.container.height() - 22),
             )
         if hasattr(self, "drag_handle"):
-            self.drag_handle.move(
-                max(0, self.container.width() - 48),
-                2,
-            )
+            handle_width = max(200, self.container.width() - 80)
+            handle_x = max(0, (self.container.width() - handle_width) // 2)
+            self.drag_handle.setGeometry(handle_x, 2, handle_width, 14)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)

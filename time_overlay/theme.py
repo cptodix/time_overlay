@@ -3,8 +3,37 @@
 
 from __future__ import annotations
 
+from PyQt6.QtGui import QColor, QPalette
+
 ACCENT = "#4da3ff"
 ACCENT_RGB = "77, 163, 255"
+
+
+def dark_palette() -> QPalette:
+    """Return an application-wide dark palette.
+
+    Stylesheets do not always propagate text colors to internal editors such
+    as ``QSpinBox``'s ``QLineEdit``, especially under native platform styles.
+    Setting the application palette as well keeps text white and editable
+    fields dark on every platform.
+    """
+    palette = QPalette()
+    palette.setColor(QPalette.ColorRole.Window, QColor("#181818"))
+    palette.setColor(QPalette.ColorRole.WindowText, QColor("#f0f0f0"))
+    palette.setColor(QPalette.ColorRole.Base, QColor("#262626"))
+    palette.setColor(QPalette.ColorRole.AlternateBase, QColor("#1f1f1f"))
+    palette.setColor(QPalette.ColorRole.ToolTipBase, QColor("#262626"))
+    palette.setColor(QPalette.ColorRole.ToolTipText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.Button, QColor("#2a2a2a"))
+    palette.setColor(QPalette.ColorRole.ButtonText, QColor("#f4f4f4"))
+    palette.setColor(QPalette.ColorRole.BrightText, QColor("#ff5555"))
+    palette.setColor(QPalette.ColorRole.Link, QColor(ACCENT))
+    palette.setColor(QPalette.ColorRole.Highlight, QColor("#2f7fd6"))
+    palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+    palette.setColor(QPalette.ColorRole.PlaceholderText, QColor("#8a8a8a"))
+    return palette
+
 
 ACTIVE_STYLESHEET = f"""
 #container {{
@@ -24,7 +53,7 @@ QPushButton {{
     background-color: rgba(255, 255, 255, 14);
     border: 1px solid rgba(255, 255, 255, 30);
     border-radius: 10px;
-    padding: 9px 12px;
+    padding: 8px 10px;
     font-size: 14px;
     font-weight: 600;
 }}
@@ -46,7 +75,7 @@ QPushButton:disabled {{
 }}
 QPushButton#modeButton {{
     text-align: left;
-    padding: 11px 16px;
+    padding: 9px 12px;
 }}
 QPushButton#startButton {{
     background-color: rgba({ACCENT_RGB}, 92);
@@ -129,27 +158,6 @@ QLabel#fieldLabel {{
     font-weight: 700;
     letter-spacing: 1px;
 }}
-QSpinBox {{
-    background-color: #262626;
-    color: #ffffff;
-    border: 1px solid #3a3a3a;
-    border-radius: 8px;
-    padding: 7px 8px;
-    min-width: 56px;
-    font-size: 18px;
-    font-weight: 600;
-    selection-background-color: #2f7fd6;
-    selection-color: #ffffff;
-}}
-QSpinBox:focus {{
-    border-color: {ACCENT};
-}}
-QSpinBox QLineEdit {{
-    color: #ffffff;
-    background-color: transparent;
-    selection-background-color: #2f7fd6;
-    selection-color: #ffffff;
-}}
 QPushButton {{
     color: #f4f4f4;
     background-color: rgba(255, 255, 255, 14);
@@ -188,14 +196,14 @@ QPushButton#presetButton:hover {{
 }}
 QPushButton#primaryButton {{
     background-color: #2f7fd6;
-    border-color: #4da3ff;
+    border-color: {ACCENT};
 }}
 QPushButton#primaryButton:hover {{
     background-color: #3a91ee;
 }}
 QPushButton#primaryButton:disabled {{
     background-color: rgba(47, 127, 214, 70);
-    border-color: rgba(77, 163, 255, 80);
+    border-color: rgba({ACCENT_RGB}, 80);
     color: rgba(255, 255, 255, 90);
 }}
 """

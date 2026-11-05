@@ -72,7 +72,10 @@ QPushButton#subtleButton:hover {{
 GHOST_STYLESHEET = """
 #container {
     background-color: rgba(0, 0, 0, 0);
-    border: none;
+    /* Keep the same 1px border box as the active style so hiding the
+       background does not change the layout geometry or the fitted font. */
+    border: 1px solid rgba(0, 0, 0, 0);
+    border-radius: 20px;
 }
 """
 
@@ -132,12 +135,20 @@ QSpinBox {{
     border: 1px solid #3a3a3a;
     border-radius: 8px;
     padding: 7px 8px;
-    min-width: 64px;
+    min-width: 56px;
     font-size: 18px;
     font-weight: 600;
+    selection-background-color: #2f7fd6;
+    selection-color: #ffffff;
 }}
 QSpinBox:focus {{
     border-color: {ACCENT};
+}}
+QSpinBox QLineEdit {{
+    color: #ffffff;
+    background-color: transparent;
+    selection-background-color: #2f7fd6;
+    selection-color: #ffffff;
 }}
 QPushButton {{
     color: #f4f4f4;

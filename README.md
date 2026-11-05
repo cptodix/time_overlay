@@ -7,24 +7,26 @@ The overlay shows large white time text with a black outline. Hovering reveals t
 ```
 ┌──────────────────────────────────────────────────────────────────────┐
 │  MODE              ┌────────────────────────────┐      CONTROLS      │
-│  [ Clock     ]     │                            │      [ Pause   ]   │
+│  [ Clock     ]     │                            │      [ Start   ]   │
 │  [ Stopwatch ]     │        12:34:56            │      [ Reset   ]   │
-│  [ Timer     ]     │                            │      [ +1m     ]   │
-│  24-hour clock     └────────────────────────────┘      [ Set     ]   │
+│  [ Timer     ]     │                            │      [ Set     ]   │
+│  24-hour clock     └────────────────────────────┘                    │
 │  Quit                                                                │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
+The three columns always keep their width. In Clock mode the right column is blank; Stopwatch uses only Start/Pause and Reset; Timer adds Set.
+
 ## Features
 
 - **Clock** — live local time, 12/24-hour toggle, updates instantly.
-- **Stopwatch** — start, pause, reset, +1 minute and set-value controls; centisecond precision backed by `time.perf_counter()`.
-- **Timer** — countdown with quick presets, HH:MM:SS entry, start/pause/reset, +1 minute, and a flashing red/white outline plus a system beep at `00:00:00`.
+- **Stopwatch** — Start/Pause and Reset, centisecond precision backed by `time.perf_counter()`. Reset zeroes the elapsed time but keeps a running stopwatch running.
+- **Timer** — countdown with quick presets, HH:MM:SS entry, Start/Pause, Reset, and Set. Reset is disabled while the timer is running; pause first. A flashing red/white outline plus a system beep marks `00:00:00`.
 - **Outlined text** — custom `OutlinedLabel` paints white glyphs with a 3 px black `QPainterPath` stroke for visibility over any content.
-- **Responsive type** — the time font is recomputed with a binary search on every resize (and when panels hide/show), so the text fills the available space without clipping.
-- **Ghost mode** — controls and the dark rounded background disappear when the cursor leaves the window; the outlined time remains.
-- **Drag to move** — left-click and drag anywhere on the overlay (buttons still work normally).
-- **Always on top** — frameless tool window with Windows native topmost re-enforcement every 2 seconds and X11 utility hints on Linux.
+- **Fixed three-column layout** — mode column, time column, controls column. The time font is fitted on window resize and mode/text changes, not when panels are hidden, so the clock does not grow when the cursor leaves.
+- **Ghost mode** — panel contents and the dark rounded background disappear when the cursor leaves the window; the columns stay in place and the outlined time remains.
+- **Drag handle** — a visible top-right grip moves the window; the bottom-right grip resizes it. Both use Qt's system move/resize when available, which is the portable path on Wayland, with a direct-geometry fallback.
+- **Always on top** — frameless tool window with Windows native topmost re-enforcement every 2 seconds, plus a periodic Linux restack attempt and X11 utility hints.
 - **Remembers position** — window geometry and clock format are stored with `QSettings`.
 
 ## Requirements
@@ -52,22 +54,22 @@ python -m time_overlay
 
 | Mode | Controls |
 | --- | --- |
-| **Clock** | Left panel: `Clock`, `Stopwatch`, `Timer`, 12/24-hour toggle, `Quit`. Action controls are hidden in clock mode. |
-| **Stopwatch** | `Start`/`Pause`, `Reset`, `+1m`, `Set` |
-| **Timer** | `Start`/`Pause`, `Reset`, `+1m`, `Set` (HH:MM:SS picker with 1/5/10/15/25/45-minute presets) |
+| **Clock** | Left panel: `Clock`, `Stopwatch`, `Timer`, 12/24-hour toggle, `Quit`. The right column is blank. |
+| **Stopwatch** | `Start`/`Pause`, `Reset` — reset zeroes the time and keeps a running stopwatch running |
+| **Timer** | `Start`/`Pause`, `Reset`, `Set` (HH:MM:SS picker with 1/5/10/15/25/45-minute presets); `Reset` is disabled while running |
 
-- **Hover** over the window to reveal the panels and the dark rounded background.
-- **Move the cursor outside** the window to enter ghost mode: only the outlined time stays visible.
-- **Drag** with the left mouse button anywhere on the overlay to reposition it.
-- **Resize** with the small grip in the bottom-right corner while the panels are visible.
+- **Hover** over the window to reveal the panel contents, the drag/resize grips, and the dark rounded background.
+- **Move the cursor outside** the window to enter ghost mode: only the outlined time stays visible. The fixed three-column layout means the time does not move or grow.
+- **Drag** the top-right handle to reposition the window.
+- **Resize** with the grip in the bottom-right corner.
 - **Right-click** anywhere for the context menu: center on screen, switch 12/24-hour clock, or quit.
 - The `Quit` button in the left panel also exits the app.
 
 ### Timer behavior
 
 - `Set` opens a modal picker. Presets apply instantly; the `Set` button stays disabled for a zero-length timer.
-- `+1m` extends a running countdown or adds a minute to a paused/finished one.
-- On reaching zero the timer stops, beeps, and flashes the outline red/white. Press `Reset`, `+1m`, `Set`, or `Start` to leave the finished state.
+- `Reset` is only available while the timer is paused or finished. Pause a running timer first.
+- On reaching zero the timer stops, beeps, and flashes the outline red/white. Press `Reset`, `Set`, or `Start` to leave the finished state.
 
 ## Platform notes
 
@@ -77,13 +79,13 @@ The window uses `FramelessWindowHint | WindowStaysOnTopHint | Tool | WindowDoesN
 
 ### Linux
 
-Qt's `Tool`/utility window hint and `WindowStaysOnTopHint` are used. On X11 the app additionally sets `WA_X11NetWmWindowTypeUtility`. Some window managers still place full-screen windows above normal topmost clients. If your X11 WM does this, launch with:
+Qt's `Tool`/utility window hint and `WindowStaysOnTopHint` are used. On X11 the app additionally sets `WA_X11NetWmWindowTypeUtility`. A 2-second timer calls `raise_()` to recover if the window manager lowers the overlay after focus changes; it is skipped while the set dialog or context menu is open. Some window managers still place full-screen windows above normal topmost clients. If your X11 WM does this, launch with:
 
 ```bash
 TIME_OVERLAY_X11_DOCK=1 python main.py
 ```
 
-which requests an X11 dock-type window instead. Wayland compositors intentionally restrict client-controlled always-on-top; behavior depends on the compositor (KDE and some wlroots compositors generally honor it, GNOME may not). A compositor is required for the transparent background and rounded corners.
+which requests an X11 dock-type window instead. Wayland compositors intentionally restrict client-controlled always-on-top and may also restrict client-initiated window positioning/resizing; the drag and resize grips use Qt's system move/resize operations first for this reason. Behavior depends on the compositor (KDE and some wlroots compositors generally honor it, GNOME may not). A compositor is required for the transparent background and rounded corners.
 
 ## Packaging
 
@@ -165,7 +167,9 @@ QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
 ```
 
 - `tests/test_core.py` covers the Qt-free stopwatch/countdown state machines and formatting.
-- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, and the resize grip.
+- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, the drag/resize grips, the set dialog, and the app icon.
+
+The suite currently contains **35 tests**.
 
 ## Project layout
 
@@ -178,7 +182,7 @@ time_overlay/
   outlined_label.py           QPainterPath outlined-text widget
   core.py                     Stopwatch, CountdownTimer, formatters
   dialogs.py                  HH:MM:SS set dialog with presets
-  widgets.py                  Custom resize grip
+  widgets.py                  Custom drag and resize grips
   platform_hints.py           Windows topmost + Linux X11/Wayland hints
   theme.py                    Qt stylesheets
 packaging/

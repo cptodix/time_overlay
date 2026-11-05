@@ -1,9 +1,10 @@
 # SPDX-License-Identifier: GPL-3.0-or-later
-"""Modal dialogs used to set timer durations and stopwatch values."""
+"""Modal dialog used to set timer durations."""
 
 from __future__ import annotations
 
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor, QPalette
 from PyQt6.QtWidgets import (
     QDialog,
     QGridLayout,
@@ -28,15 +29,6 @@ _TIMER_PRESETS = (
     ("45 min", 2700),
 )
 
-_STOPWATCH_PRESETS = (
-    ("0 sec", 0),
-    ("30 sec", 30),
-    ("1 min", 60),
-    ("5 min", 300),
-    ("10 min", 600),
-    ("30 min", 1800),
-)
-
 
 class TimeSetDialog(QDialog):
     """A small dark-themed HH:MM:SS picker with quick presets."""
@@ -47,12 +39,15 @@ class TimeSetDialog(QDialog):
         *,
         title: str = "Set Timer",
         initial_seconds: float = 300,
-        allow_zero: bool = False,
         presets: tuple[tuple[str, int], ...] | None = None,
     ) -> None:
         super().__init__(parent)
-        self._allow_zero = allow_zero
         self._presets = presets if presets is not None else _TIMER_PRESETS
+
+        # Closing a QDialog is otherwise treated as closing a quit-on-close
+        # window. The overlay is a Tool window whose WA_QuitOnClose is set
+        # explicitly, so the dialog must never quit the application.
+        self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
 
         self.setWindowTitle(title)
         self.setWindowFlags(
@@ -76,12 +71,7 @@ class TimeSetDialog(QDialog):
         title_label.setObjectName("titleLabel")
         root.addWidget(title_label)
 
-        hint_text = (
-            "Choose an elapsed time. Presets apply instantly."
-            if allow_zero
-            else "Choose a duration. Presets apply instantly."
-        )
-        hint = QLabel(hint_text)
+        hint = QLabel("Choose a duration. Presets apply instantly.")
         hint.setObjectName("hintLabel")
         root.addWidget(hint)
 
@@ -155,14 +145,12 @@ class TimeSetDialog(QDialog):
         *,
         title: str,
         initial_seconds: float,
-        allow_zero: bool = False,
         presets: tuple[tuple[str, int], ...] | None = None,
     ) -> int | None:
         dialog = cls(
             parent,
             title=title,
             initial_seconds=initial_seconds,
-            allow_zero=allow_zero,
             presets=presets,
         )
         if dialog.exec() == QDialog.DialogCode.Accepted:
@@ -175,11 +163,26 @@ class TimeSetDialog(QDialog):
         spinbox = QSpinBox()
         spinbox.setRange(minimum, maximum)
         spinbox.setValue(value)
-        spinbox.setAlignment(Qt.AlignmentFlag.AlignRight)
+        spinbox.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        spinbox.setMinimumWidth(56)
         # The built-in arrows are hard to see on a dark stylesheet, so the
         # dialog uses explicit -/+ buttons instead.
         spinbox.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         spinbox.setAccelerated(True)
+
+        # QSS alone is not reliable for the internal line edit on every
+        # platform/style; set the palette explicitly so the value stays white.
+        palette = spinbox.palette()
+        palette.setColor(QPalette.ColorRole.Base, QColor("#262626"))
+        palette.setColor(QPalette.ColorRole.Text, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.WindowText, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.ButtonText, QColor("#ffffff"))
+        palette.setColor(QPalette.ColorRole.Highlight, QColor("#2f7fd6"))
+        palette.setColor(QPalette.ColorRole.HighlightedText, QColor("#ffffff"))
+        spinbox.setPalette(palette)
+        line_edit = spinbox.lineEdit()
+        if line_edit is not None:
+            line_edit.setPalette(palette)
         return spinbox
 
     @staticmethod
@@ -234,7 +237,7 @@ class TimeSetDialog(QDialog):
         self._seconds.setValue(seconds)
 
     def _update_ok_button(self) -> None:
-        self._ok_button.setEnabled(self._allow_zero or self._total_seconds() > 0)
+        self._ok_button.setEnabled(self._total_seconds() > 0)
 
     def _center_on_parent(self, parent: QWidget | None) -> None:
         if parent is None:
@@ -248,16 +251,5 @@ def ask_for_timer(parent: QWidget | None, initial_seconds: float) -> int | None:
         parent,
         title="Set Timer",
         initial_seconds=initial_seconds,
-        allow_zero=False,
         presets=_TIMER_PRESETS,
-    )
-
-
-def ask_for_stopwatch(parent: QWidget | None, initial_seconds: float) -> int | None:
-    return TimeSetDialog.ask(
-        parent,
-        title="Set Stopwatch",
-        initial_seconds=initial_seconds,
-        allow_zero=True,
-        presets=_STOPWATCH_PRESETS,
     )

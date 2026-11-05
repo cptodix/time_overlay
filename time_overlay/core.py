@@ -43,19 +43,14 @@ class Stopwatch:
             self.start()
 
     def reset(self) -> None:
+        """Zero the elapsed time without changing the running state.
+
+        Resetting a running stopwatch keeps it running from zero; resetting a
+        paused stopwatch leaves it paused at zero.
+        """
         self._accumulated = 0.0
-        self._started_at = None
-
-    def add_seconds(self, seconds: float) -> None:
-        """Add time to the elapsed value without changing the running state."""
-        self._accumulated = max(0.0, self._accumulated + seconds)
-
-    def set_elapsed(self, seconds: float) -> None:
-        """Set the elapsed value, preserving whether the stopwatch is running."""
-        seconds = max(0.0, seconds)
-        if self.running:
+        if self._started_at is not None:
             self._started_at = self._clock()
-        self._accumulated = seconds
 
     def elapsed(self) -> float:
         if self._started_at is None:
@@ -117,14 +112,6 @@ class CountdownTimer:
         self._duration = max(0.0, seconds)
         self._remaining = self._duration
         self._deadline = None
-
-    def add_seconds(self, seconds: float) -> None:
-        """Extend the countdown without changing the running state."""
-        seconds = max(0.0, seconds)
-        if self._deadline is not None:
-            self._deadline += seconds
-        else:
-            self._remaining = max(0.0, self._remaining + seconds)
 
     def tick(self) -> bool:
         """Return True exactly once, when a running countdown reaches zero."""

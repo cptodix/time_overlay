@@ -64,26 +64,22 @@ class StopwatchTests(unittest.TestCase):
         self.watch.toggle()
         self.assertFalse(self.watch.running)
 
-    def test_reset_stops_and_clears(self) -> None:
+    def test_reset_while_running_keeps_running_from_zero(self) -> None:
         self.watch.start()
         self.clock.advance(4.0)
         self.watch.reset()
+        self.assertTrue(self.watch.running)
+        self.assertEqual(self.watch.elapsed(), 0.0)
+        self.clock.advance(1.5)
+        self.assertAlmostEqual(self.watch.elapsed(), 1.5)
+
+    def test_reset_while_paused_stays_paused_at_zero(self) -> None:
+        self.watch.start()
+        self.clock.advance(4.0)
+        self.watch.pause()
+        self.watch.reset()
         self.assertFalse(self.watch.running)
         self.assertEqual(self.watch.elapsed(), 0.0)
-
-    def test_add_seconds_while_running(self) -> None:
-        self.watch.start()
-        self.clock.advance(1.0)
-        self.watch.add_seconds(60)
-        self.assertAlmostEqual(self.watch.elapsed(), 61.0)
-
-    def test_set_elapsed_preserves_running_state(self) -> None:
-        self.watch.start()
-        self.clock.advance(1.0)
-        self.watch.set_elapsed(30.0)
-        self.assertTrue(self.watch.running)
-        self.clock.advance(2.0)
-        self.assertAlmostEqual(self.watch.elapsed(), 32.0)
 
 
 class CountdownTimerTests(unittest.TestCase):
@@ -122,16 +118,6 @@ class CountdownTimerTests(unittest.TestCase):
         self.timer.start()
         self.assertTrue(self.timer.running)
         self.assertAlmostEqual(self.timer.remaining(), 300.0)
-
-    def test_add_seconds_while_running(self) -> None:
-        self.timer.start()
-        self.clock.advance(10.0)
-        self.timer.add_seconds(60)
-        self.assertAlmostEqual(self.timer.remaining(), 350.0)
-
-    def test_add_seconds_while_paused(self) -> None:
-        self.timer.add_seconds(60)
-        self.assertAlmostEqual(self.timer.remaining(), 360.0)
 
     def test_reset_restores_duration(self) -> None:
         self.timer.start()

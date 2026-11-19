@@ -28,6 +28,7 @@ The three columns always keep their width. In Clock mode the right column is bla
 - **Drag handle** — a long, centered bar across the top moves the window; the bottom-right grip resizes it. Both use Qt's system move/resize when available, which is the portable path on Wayland, with a direct-geometry fallback.
 - **Always on top** — frameless tool window with Windows native topmost re-enforcement every 2 seconds, plus a periodic Linux restack attempt and X11 utility hints.
 - **Remembers position** — window geometry and clock format are stored with `QSettings`.
+- **Single instance** — launching a second copy shows a notice and exits, so two overlays cannot fight over the settings.
 
 ## Requirements
 
@@ -120,7 +121,7 @@ The script:
 
 1. Runs PyInstaller with `--onefile`.
 2. Creates an AppDir with `AppRun`, a `.desktop` file, the scalable SVG app icon, and a generated 256×256 PNG fallback.
-3. Downloads `appimagetool` and the type-2 runtime (cached in `build/`) and produces `dist/TimeOverlay-x86_64.AppImage` (or `aarch64`).
+3. Downloads pinned `appimagetool` 1.9.1 and type-2 runtime 20251108 (cached in `build/`), verifies their SHA256, and produces `dist/TimeOverlay-x86_64.AppImage` (or `aarch64`).
 
 Build dependencies: Python 3, `curl`, and the usual Qt runtime libraries. `APPIMAGE_EXTRACT_AND_RUN=1` is used so FUSE is **not** required on the build machine.
 
@@ -139,7 +140,7 @@ APPIMAGE_EXTRACT_AND_RUN=1 ./dist/TimeOverlay-x86_64.AppImage
 
 ### Automated releases
 
-The `Release` workflow is triggered manually and creates the tag for you. Choose a bump type (`patch`, `minor`, or `major`); it reads the latest `vX.Y.Z` tag, computes the next version, runs the tests, builds both artifacts, creates the new tag, and publishes a GitHub Release for it.
+The `Release` workflow is triggered manually and creates the tag for you. Choose a bump type (`patch`, `minor`, or `major`); it reads the latest `vX.Y.Z` tag, computes the next version, runs the tests, builds both artifacts, creates the new tag, and publishes a GitHub Release for it. It only runs on the repository's default branch. The app version is stamped from the new tag before the builds, and both artifacts get a short start-up smoke test before they are published.
 
 From the GitHub UI: **Actions → Release → Run workflow**, choose `patch` / `minor` / `major`.
 
@@ -167,9 +168,10 @@ QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
 ```
 
 - `tests/test_core.py` covers the Qt-free stopwatch/countdown state machines and formatting.
-- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, the drag/resize grips, the set dialog (including a pixel check that field values are painted white), and the app icon.
+- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, geometry clamping, the drag/resize grips, the set dialog (including a pixel check that field values are painted white, a deletion check, and keyboard/wheel behavior), and the app icon.
+- `tests/test_app.py` checks that a second process cannot take the single-instance lock.
 
-The suite currently contains **37 tests**.
+The suite currently contains **44 tests**.
 
 ## Project layout
 
@@ -182,7 +184,7 @@ time_overlay/
   outlined_label.py           QPainterPath outlined-text widget
   core.py                     Stopwatch, CountdownTimer, formatters
   dialogs.py                  HH:MM:SS set dialog with presets
-  widgets.py                  Custom drag and resize grips
+  widgets.py                  Drag/resize grips and the painted time field
   platform_hints.py           Windows topmost + Linux X11/Wayland hints
   theme.py                    Qt stylesheets
 packaging/

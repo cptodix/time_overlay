@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+# Release version stamped by the release workflow
+time_overlay/_version.py
+
 # Distribution / packaging
 .Python
 build/

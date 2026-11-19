@@ -6,19 +6,36 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 from PyQt6.QtCore import QEvent, QPoint, QPointF, QSettings, Qt
-from PyQt6.QtGui import QIcon, QMouseEvent, QPalette
+from PyQt6.QtGui import (
+    QContextMenuEvent,
+    QGuiApplication,
+    QIcon,
+    QMouseEvent,
+    QPalette,
+    QWheelEvent,
+)
 from PyQt6.QtTest import QTest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QDialog, QMenu
 
 from time_overlay.app import _icon_path
-from time_overlay.dialogs import TimeSetDialog
+from time_overlay.core import CountdownTimer
+from time_overlay.dialogs import TimeSetDialog, ask_for_timer
 from time_overlay.theme import dark_palette
 from time_overlay.widgets import TimeField
 from time_overlay.window import Mode, TimeOverlayWindow
+
+
+class _FakeClock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
 
 
 class WindowTests(unittest.TestCase):
@@ -153,6 +170,31 @@ class WindowTests(unittest.TestCase):
         self.assertEqual(ghost_size, active_size)
         self.assertEqual(ghost_geometry, active_geometry)
 
+    def test_restore_geometry_clamps_to_screen(self) -> None:
+        settings = QSettings(
+            os.path.join(self.temp_dir.name, "restore.ini"),
+            QSettings.Format.IniFormat,
+        )
+        screen = QGuiApplication.primaryScreen()
+        self.assertIsNotNone(screen)
+        assert screen is not None
+        area = screen.availableGeometry()
+
+        source = TimeOverlayWindow(settings=settings)
+        source.resize(area.width() + 800, area.height() + 800)
+        settings.setValue(TimeOverlayWindow.GEOMETRY_KEY, source.saveGeometry())
+        settings.sync()
+        source.close()
+        source.deleteLater()
+        self.app.processEvents()
+
+        restored = TimeOverlayWindow(settings=settings)
+        self.assertLessEqual(restored.width(), area.width())
+        self.assertLessEqual(restored.height(), area.height())
+        restored.close()
+        restored.deleteLater()
+        self.app.processEvents()
+
     def test_timer_finishes_in_background(self) -> None:
         self.window.set_mode(Mode.TIMER)
         self.window._timer.set_duration(0.15)
@@ -217,6 +259,20 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(self.window._timer.running)
         self.assertAlmostEqual(self.window._timer.remaining(), 300.0)
 
+    def test_pause_after_deadline_beeps(self) -> None:
+        clock = _FakeClock()
+        self.window._timer = CountdownTimer(0.01, clock)
+        self.window.set_mode(Mode.TIMER)
+        self.window._timer.start()
+        clock.now = 1.0
+        self.window._beep = Mock()
+
+        self.window._toggle_active()
+
+        self.window._beep.assert_called_once()
+        self.assertFalse(self.window._timer.running)
+        self.assertEqual(self.window._timer.remaining(), 0.0)
+
     def test_resize_grip_resizes_window(self) -> None:
         self.window.resize(960, 300)
         self.window.show()
@@ -274,6 +330,27 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(dialog.testAttribute(Qt.WidgetAttribute.WA_QuitOnClose))
         dialog.deleteLater()
 
+    def test_context_menu_is_deleted(self) -> None:
+        event = QContextMenuEvent(
+            QContextMenuEvent.Reason.Mouse, QPoint(5, 5), QPoint(5, 5)
+        )
+        with patch.object(QMenu, "exec", return_value=None):
+            self.window.contextMenuEvent(event)
+
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        self.assertEqual(self.window.findChildren(QMenu), [])
+
+    def test_set_dialog_is_deleted_after_ask(self) -> None:
+        with patch.object(
+            TimeSetDialog, "exec", return_value=QDialog.DialogCode.Rejected
+        ):
+            self.assertIsNone(ask_for_timer(self.window, 300))
+
+        QApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+        self.app.processEvents()
+        self.assertEqual(self.window.findChildren(TimeSetDialog), [])
+
     def test_dark_palette_keeps_editor_text_visible(self) -> None:
         palette = dark_palette()
         self.assertEqual(palette.color(QPalette.ColorRole.Text).name(), "#ffffff")
@@ -305,6 +382,39 @@ class WindowTests(unittest.TestCase):
         field.setValue(-5)
         self.assertEqual(field.value(), 0)
         field.deleteLater()
+
+    def test_time_field_wheel_requires_focus(self) -> None:
+        field = TimeField(5, 0, 59)
+        field.show()
+        field.clearFocus()
+        self.app.processEvents()
+        before = field.value()
+        event = QWheelEvent(
+            QPointF(5, 5),
+            QPointF(5, 5),
+            QPoint(0, 0),
+            QPoint(0, 120),
+            Qt.MouseButton.NoButton,
+            Qt.KeyboardModifier.NoModifier,
+            Qt.ScrollPhase.NoScrollPhase,
+            False,
+        )
+        QApplication.sendEvent(field, event)
+        self.assertEqual(field.value(), before)
+        field.deleteLater()
+
+    def test_time_field_enter_accepts_dialog(self) -> None:
+        dialog = TimeSetDialog(self.window, initial_seconds=300)
+        dialog.show()
+        self.app.processEvents()
+        dialog._hours.setFocus()
+        self.app.processEvents()
+
+        QTest.keyClick(dialog._hours, Qt.Key.Key_Return)
+        self.app.processEvents()
+
+        self.assertEqual(dialog.result(), QDialog.DialogCode.Accepted)
+        dialog.deleteLater()
 
     def test_set_dialog_values_are_painted_white(self) -> None:
         dialog = TimeSetDialog(self.window, initial_seconds=3723)

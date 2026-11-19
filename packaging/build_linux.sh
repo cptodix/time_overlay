@@ -55,9 +55,20 @@ install -m 644 "$ROOT_DIR/packaging/time_overlay_icon.svg" \
   "$APPDIR/usr/share/icons/hicolor/scalable/apps/time-overlay.svg"
 
 echo "[4/4] Creating AppImage..."
+# Pinned tools: update the version and SHA256 together when bumping.
+APPIMAGETOOL_VERSION="1.9.1"
+RUNTIME_VERSION="20251108"
 case "$(uname -m)" in
-  x86_64|amd64) APPIMAGE_ARCH="x86_64" ;;
-  aarch64|arm64) APPIMAGE_ARCH="aarch64" ;;
+  x86_64|amd64)
+    APPIMAGE_ARCH="x86_64"
+    APPIMAGETOOL_SHA256="ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0"
+    RUNTIME_SHA256="2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d"
+    ;;
+  aarch64|arm64)
+    APPIMAGE_ARCH="aarch64"
+    APPIMAGETOOL_SHA256="f0837e7448a0c1e4e650a93bb3e85802546e60654ef287576f46c71c126a9158"
+    RUNTIME_SHA256="00cbdfcf917cc6c0ff6d3347d59e0ca1f7f45a6df1a428a0d6d8a78664d87444"
+    ;;
   *)
     echo "Unsupported architecture: $(uname -m)" >&2
     exit 1
@@ -68,22 +79,24 @@ mkdir -p "$ROOT_DIR/build"
 
 TOOL="$ROOT_DIR/build/appimagetool"
 if [ ! -x "$TOOL" ]; then
-  URL="https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${APPIMAGE_ARCH}.AppImage"
+  URL="https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-${APPIMAGE_ARCH}.AppImage"
   echo "Downloading $URL"
   curl -L --fail --retry 3 --output "$TOOL.download" "$URL"
   chmod +x "$TOOL.download"
   mv "$TOOL.download" "$TOOL"
 fi
+echo "${APPIMAGETOOL_SHA256}  $TOOL" | sha256sum -c -
 
 # appimagetool normally downloads the type-2 runtime itself, but its bundled
 # libcurl can be unreliable behind proxies. Fetch it with curl and pass it in.
 RUNTIME="$ROOT_DIR/build/runtime-${APPIMAGE_ARCH}"
 if [ ! -f "$RUNTIME" ]; then
-  RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/continuous/runtime-${APPIMAGE_ARCH}"
+  RUNTIME_URL="https://github.com/AppImage/type2-runtime/releases/download/${RUNTIME_VERSION}/runtime-${APPIMAGE_ARCH}"
   echo "Downloading $RUNTIME_URL"
   curl -L --fail --retry 3 --output "$RUNTIME.download" "$RUNTIME_URL"
   mv "$RUNTIME.download" "$RUNTIME"
 fi
+echo "${RUNTIME_SHA256}  $RUNTIME" | sha256sum -c -
 
 OUTPUT="$ROOT_DIR/dist/TimeOverlay-${APPIMAGE_ARCH}.AppImage"
 # APPIMAGE_EXTRACT_AND_RUN avoids requiring FUSE on build machines/CI.

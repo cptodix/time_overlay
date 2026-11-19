@@ -21,7 +21,7 @@ This document is the fast path for a new maintainer or agent. It explains what e
 - The app has no keyboard focus by design (`WindowDoesNotAcceptFocus`), so every core action must remain mouse-accessible.
 - Packaging is script-driven: `packaging/build_windows.bat` and `packaging/build_linux.sh`. There is no `pyproject.toml` / pip-installable package.
 - Releases are manual `workflow_dispatch` runs. The workflow calculates the next `vX.Y.Z` tag from the last tag, runs tests/builds, creates the tag, and publishes the release. It no longer triggers on tag pushes.
-- Current test suite: **37 tests**, all passing headlessly. `ruff check .` and `ruff format --check .` pass.
+- Current test suite: **44 tests**, all passing headlessly. `ruff check .` and `ruff format --check .` pass.
 - Biggest known gap: the app's `time_overlay/__init__.py` version is still static `1.0.0`; the release workflow creates tags but does not update the source version.
 
 ---
@@ -32,7 +32,7 @@ At the time this note was written:
 
 - The implementation and this handover document were present in the working tree (`git status` showed new `time_overlay/`, `tests/`, `packaging/`, `main.py`, `requirements*.txt`, `.github/`, and `HANDOVER.md`).
 - `.gitignore` and `README.md` were modified.
-- The test suite passed headlessly (37 tests), and ruff checks passed.
+- The test suite passed headlessly (44 tests), and ruff checks passed.
 - The release workflow YAML was validated structurally, and its version-bump/tag logic was exercised locally in temporary git repositories.
 - A Linux AppImage was built and run headlessly during development. The generated `build/`, `dist/`, and `.ruff_cache/` outputs were removed afterward.
 - Native Windows building and real X11/Wayland compositor behavior were **not** exercised in the development environment; CI/build scripts cover them conceptually but need a real target machine or GitHub runner to confirm.
@@ -41,8 +41,8 @@ Before handing over to a release:
 
 1. Commit and push the working tree.
 2. Run the full test suite and ruff checks.
-3. Decide whether to bump `time_overlay/__init__.py` to match the intended release tag.
-4. Verify repository Actions permissions allow `contents: write`.
+3. Verify the release runs from the default branch; the build jobs stamp the app version from the new tag automatically.
+4. Verify repository Actions permissions allow `contents: write` for the `release` job (the other jobs are read-only).
 
 ---
 
@@ -226,7 +226,7 @@ Not persisted: mode, timer duration, stopwatch state. The app always starts in C
 | Path | Responsibility |
 |---|---|
 | `main.py` | Direct/PyInstaller entry point |
-| `time_overlay/app.py` | `QApplication` bootstrap, dark palette, metadata, and runtime app icon |
+| `time_overlay/app.py` | `QApplication` bootstrap, dark palette, single-instance lock, metadata, and runtime app icon |
 | `time_overlay/window.py` | Main window, layout, modes, hover, drag, resize, flash, context menu, settings |
 | `time_overlay/outlined_label.py` | `OutlinedLabel`: `QPainterPath` stroke/fill, centering, binary-search font fitting |
 | `time_overlay/core.py` | Qt-free `Stopwatch`, `CountdownTimer`, formatters |
@@ -362,8 +362,8 @@ expected behaviour without depending on a native text widget:
 
 - type digits to replace/increment the value,
 - Backspace deletes the last digit, Delete resets to zero,
-- Up/Down and the mouse wheel step by one,
-- Tab/Shift+Tab traverse fields, Enter clears focus,
+- Up/Down and the mouse wheel (when focused) step by one,
+- Tab/Shift+Tab traverse fields, Enter triggers the dialog's Set button,
 - `+`/`−` buttons and presets call `setValue()`,
 - values are clamped to the field's min/max (for example minutes `0..59`).
 
@@ -391,7 +391,8 @@ ruff format --check .
 ### What is covered
 
 - `tests/test_core.py` (19 tests): stopwatch start/pause/resume/toggle, including reset-while-running and reset-while-paused; countdown start/pause/reset/set/tick/finish/restart; 12/24-hour formatting including midnight/noon; stopwatch/countdown formatting and rounding.
-- `tests/test_ui.py` (18 tests): required window flags/attributes and `WA_QuitOnClose`; app icon loading; initial Clock/ghost state; content visibility and background on hover; mode text; clock format toggle and active-mode text preservation; font growth on resize; font/layout stability across ghost mode; background timer completion; stopwatch controls and reset-while-running; timer reset gating; drag handle; resize grip; set-dialog quit behavior; dark palette values; `TimeField` typing/clamping; and a pixel check that every set-dialog value is painted white.
+- `tests/test_ui.py` (24 tests): required window flags/attributes and `WA_QuitOnClose`; app icon loading; initial Clock/ghost state; content visibility and background on hover; mode text; clock format toggle and active-mode text preservation; font growth on resize; font/layout stability across ghost mode; geometry clamping; background timer completion; stopwatch controls and reset-while-running; timer reset gating; pause-at-zero beep; drag handle; resize grip; set-dialog quit behavior and deletion; context-menu deletion; dark palette values; `TimeField` typing/clamping, wheel focus, and Enter submit; and a pixel check that every set-dialog value is painted white.
+- `tests/test_app.py` (1 test): the single-instance lock refuses a second holder.
 
 ### What is **not** covered automatically
 
@@ -455,7 +456,7 @@ What it does:
    - `time-overlay.svg` (root + hicolor scalable)
    - `time-overlay.png` (root + hicolor 256×256)
    - `.DirIcon`
-4. Downloads `appimagetool` and the type-2 runtime into `build/` if not cached.
+4. Downloads pinned `appimagetool` 1.9.1 and type-2 runtime 20251108 into `build/` if not cached, then verifies their SHA256.
 5. Runs appimagetool with `APPIMAGE_EXTRACT_AND_RUN=1 --no-appstream --runtime-file ...`.
 
 Output: `dist/TimeOverlay-x86_64.AppImage` (or `aarch64`).
@@ -504,7 +505,7 @@ on:
         default: patch
 ```
 
-There is **no** `push: tags` trigger anymore. Pushing a tag manually will not run this workflow.
+There is **no** `push: tags` trigger anymore. Pushing a tag manually will not run this workflow. `prepare` and `test` only run when `github.ref_name` is the repository's default branch; the build and release jobs depend on them, so a feature-branch dispatch cannot publish.
 
 ### Jobs
 
@@ -518,11 +519,13 @@ There is **no** `push: tags` trigger anymore. Pushing a tag manually will not ru
    - Applies `patch`/`minor`/`major`, resets lower components.
    - Outputs `new_tag` (`vX.Y.Z`) and `new_version` (`X.Y.Z`).
 
-2. **`test`** — runs the headless suite on Ubuntu 22.04 / Python 3.12.
+2. **`test`** — installs ruff, runs `ruff check .` + `ruff format --check .`, then runs the headless suite on Ubuntu 22.04 / Python 3.12.
 
-3. **`windows` / `linux`** — need `[prepare, test]`, check out `github.sha`, build, and stage artifacts named with `needs.prepare.outputs.new_tag`.
+3. **`windows` / `linux`** — need `[prepare, test]`, check out `github.sha` with `persist-credentials: false`, stamp `time_overlay/_version.py` from `needs.prepare.outputs.new_version`, build, smoke-test the artifact, and stage it with `needs.prepare.outputs.new_tag`.
+   - Windows: starts the EXE, waits 5 seconds, and fails if it has already exited.
+   - Linux: runs the AppImage with `QT_QPA_PLATFORM=offscreen APPIMAGE_EXTRACT_AND_RUN=1 timeout 10`; exit 124 means it stayed running and is treated as success.
 
-4. **`release`** — needs `[prepare, windows, linux]`.
+4. **`release`** — needs `[prepare, windows, linux]`; this job is the only one with `contents: write`.
    - Checks out `github.sha` with full history.
    - Downloads both artifacts.
    - Verifies `HEAD == GITHUB_SHA`.
@@ -549,11 +552,15 @@ This serializes release runs so two dispatches cannot compute the same next vers
 
 ### Permissions
 
-The workflow needs `contents: write` for tag push and release creation. The release job uses the checkout token; do not disable `persist-credentials` there.
+The workflow-level permission is `contents: read`. Only the `release` job gets `contents: write`, for tag push and release creation. The `test`, `windows`, and `linux` checkouts set `persist-credentials: false`; the `release` checkout keeps the token because it must push the tag.
 
-### Version gap
+### Version stamping
 
-`time_overlay/__init__.py` still contains `__version__ = "1.0.0"`. The context menu displays that value. The release workflow creates tags independently. Before a release whose tag is not `v1.0.0`, decide whether to bump this file (and commit it) or make the version derive from the tag at build time. This is the most likely first maintenance task.
+`time_overlay/__init__.py` falls back to `1.0.0` for source runs. The `windows` and `linux` jobs write `time_overlay/_version.py` from `needs.prepare.outputs.new_version` before PyInstaller, so the context menu and `QApplication.applicationVersion()` match the release tag. The generated file is gitignored; do not commit it.
+
+### Build tool pinning
+
+`packaging/build_linux.sh` pins `appimagetool` 1.9.1 and type2-runtime 20251108 and verifies their SHA256. When bumping either tool, update the version, URL, and hash together for both `x86_64` and `aarch64`.
 
 ---
 
@@ -596,21 +603,19 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 
 ## 11. Known gaps / likely next tasks
 
-1. **Version source of truth** — bump `time_overlay/__init__.py` from the release tag, or inject the version at build time.
-2. **Persist more state** — mode, timer duration, and perhaps stopwatch state. Currently only clock format and geometry persist.
-3. **AppImage size/startup** — consider PyInstaller `--onedir` inside the AppDir.
-4. **Click-through ghost mode** — requires platform-specific input shapes and a plan for hover detection; currently intentionally not implemented.
-5. **Global shortcuts / keyboard access** — conflicts with `WindowDoesNotAcceptFocus`; would need global shortcuts (platform-specific) or a focusable variant.
-6. **Tray icon** — useful if the overlay is ever hidden or moved off-screen.
-7. **Accessibility** — screen-reader labels, high-contrast option, configurable outline/font.
-8. **Configuration** — outline width, colors, default timer, font family.
-9. **PR CI** — the only workflow is the manual release workflow. Add push/PR tests + lint.
-10. **Windows-native tests** — mock `ctypes` or run a Windows job that at least imports the module and constructs the window.
-11. **Pre-release/channel support** — optional `rc`/`beta` tags and release flags.
-12. **Checksums/signing** — add SHA256 checksums and code signing for Windows.
-13. **Single-instance guard** — avoid multiple overlays.
-14. **Small-window polish** — the resize grip slightly overlaps the right panel edge at minimum width.
-15. **Wayland topmost improvements** — track compositor protocols or document per-DE behavior.
+1. **Persist more state** — mode, timer duration, and perhaps stopwatch state. Currently only clock format and geometry persist.
+2. **AppImage size/startup** — consider PyInstaller `--onedir` inside the AppDir.
+3. **Click-through ghost mode** — requires platform-specific input shapes and a plan for hover detection; currently intentionally not implemented.
+4. **Global shortcuts / keyboard access** — conflicts with `WindowDoesNotAcceptFocus`; would need global shortcuts (platform-specific) or a focusable variant.
+5. **Tray icon** — useful if the overlay is ever hidden or moved off-screen.
+6. **Accessibility** — screen-reader labels, high-contrast option, configurable outline/font.
+7. **Configuration** — outline width, colors, default timer, font family.
+8. **PR CI** — the release test job runs tests + ruff, but there is still no push/PR workflow. Add one.
+9. **Windows-native tests** — mock `ctypes` or run a Windows job that at least imports the module and constructs the window.
+10. **Pre-release/channel support** — optional `rc`/`beta` tags and release flags.
+11. **Release artifact checksums/signing** — add SHA256 checksums for the EXE/AppImage and code signing for Windows. The build tools are already pinned and verified.
+12. **Small-window polish** — the resize grip slightly overlaps the right panel edge at minimum width.
+13. **Wayland topmost improvements** — track compositor protocols or document per-DE behavior.
 
 ---
 
@@ -623,6 +628,7 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 | Cannot type in the Set dialog | Window manager refused focus for a non-activating parent. Use the −/+ buttons or presets. |
 | Set dialog numbers are invisible | The dialog should use `widgets.TimeField` (custom-painted digits), not `QSpinBox`. If you see empty fields, confirm `dialogs.py` imports `TimeField`, rebuild, and run `test_set_dialog_values_are_painted_white`. `TimeField.paintEvent` sets an explicit white `QPainter` pen, so native styles cannot hide the value. |
 | Closing the Set dialog exits the app | Verify `TimeOverlayWindow` has `WA_QuitOnClose=True` and `TimeSetDialog` has `WA_QuitOnClose=False`. Tool windows default to false; QDialog defaults to true. |
+| Second launch says "Time Overlay is already running" | By design; only one overlay is allowed. Close the running copy. If it crashed, `QLockFile` should clear the stale lock; otherwise delete `time-overlay.lock` in the app config directory. |
 | Timer Reset button is disabled | By design while the timer is running. Pause first; `_update_control_labels()` re-enables it. |
 | Window cannot be dragged | Use the long drag bar across the top (five centered dots). It tries the compositor `startSystemMove()` first and falls back to manual `move()`. On Wayland, the compositor may still refuse client-initiated moves. Drag-anywhere was intentionally removed. |
 | Time text grows when the cursor leaves | The fixed 3-column layout / transparent 1 px ghost border is not in effect, or something is calling `_fit_time_font()` on hover. |
@@ -630,6 +636,7 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 | Keyboard shortcuts do nothing | By design: `WindowDoesNotAcceptFocus`. Use mouse/context menu. |
 | AppImage does not start | FUSE missing or incompatible. Run `APPIMAGE_EXTRACT_AND_RUN=1 ./dist/TimeOverlay-*.AppImage`. |
 | Linux build hangs downloading | appimagetool/runtime download/network issue. The script caches under `build/`; check proxy/curl. |
+| Linux build fails at `sha256sum -c` | The cached tool/runtime is corrupt or the pinned hash no longer matches. Delete `build/appimagetool` and/or `build/runtime-*` and rerun; if the upstream asset changed, update the version and hash in `build_linux.sh`. |
 | App icon missing | Confirm `packaging/time_overlay_icon.svg` exists and `make_icon.py` rendered it. The runtime icon also needs the `--add-data` SVG and QtSvg plugins in the frozen build. |
 | Windows build fails at icon step | PyQt6/Pillow not installed, invalid SVG path, or not running on Windows. Re-run `python -m pip install -r requirements-build.txt`. |
 | Tests fail on a real display | Use `QT_QPA_PLATFORM=offscreen` for the headless suite. |
@@ -655,13 +662,14 @@ Ghost mode is visual only. The transparent window area still receives mouse even
   - [ ] Timer field values are clearly visible and editable (type, +/−, presets).
   - [ ] Right-click menu: center, format, quit.
   - [ ] Geometry and 24-hour setting survive restart.
+  - [ ] Launching a second copy shows the "already running" notice and exits.
 - [ ] Build the Linux AppImage and run it (`APPIMAGE_EXTRACT_AND_RUN=1` if no FUSE).
 - [ ] Build `dist\TimeOverlay.exe` on Windows and run it.
-- [ ] Verify GitHub Actions has `contents: write`; check tag/branch protection allows the workflow to push tags.
-- [ ] Decide whether `time_overlay/__init__.py` needs a version bump.
+- [ ] Verify the `release` job has `contents: write`, the other jobs are read-only, and tag/branch protection allows the workflow to push tags.
+- [ ] Confirm the release workflow only runs from the default branch and is still manual (no stray `push: tags` trigger).
+- [ ] Confirm the pinned `appimagetool`/runtime versions and SHA256 in `packaging/build_linux.sh` still download successfully.
 - [ ] Commit/push the working tree before dispatching a release.
 - [ ] Check open issues / discussions / pending PRs.
-- [ ] Confirm the release workflow is still manual and no stray `push: tags` trigger was reintroduced.
 
 ---
 

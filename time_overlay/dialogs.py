@@ -36,19 +36,16 @@ class TimeSetDialog(QDialog):
         self,
         parent: QWidget | None = None,
         *,
-        title: str = "Set Timer",
         initial_seconds: float = 300,
-        presets: tuple[tuple[str, int], ...] | None = None,
     ) -> None:
         super().__init__(parent)
-        self._presets = presets if presets is not None else _TIMER_PRESETS
 
         # Closing a QDialog is otherwise treated as closing a quit-on-close
         # window. The overlay is a Tool window whose WA_QuitOnClose is set
         # explicitly, so the dialog must never quit the application.
         self.setAttribute(Qt.WidgetAttribute.WA_QuitOnClose, False)
 
-        self.setWindowTitle(title)
+        self.setWindowTitle("Set Timer")
         self.setWindowFlags(
             self.windowFlags()
             | Qt.WindowType.WindowStaysOnTopHint
@@ -66,7 +63,7 @@ class TimeSetDialog(QDialog):
         root.setContentsMargins(24, 22, 24, 20)
         root.setSpacing(14)
 
-        title_label = QLabel(title)
+        title_label = QLabel("Set Timer")
         title_label.setObjectName("titleLabel")
         root.addWidget(title_label)
 
@@ -91,7 +88,7 @@ class TimeSetDialog(QDialog):
         preset_grid = QGridLayout()
         preset_grid.setHorizontalSpacing(8)
         preset_grid.setVerticalSpacing(8)
-        for index, (label, seconds_value) in enumerate(self._presets):
+        for index, (label, seconds_value) in enumerate(_TIMER_PRESETS):
             button = QPushButton(label)
             button.setObjectName("presetButton")
             button.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -136,25 +133,6 @@ class TimeSetDialog(QDialog):
 
     def seconds(self) -> int:
         return self._total_seconds()
-
-    @classmethod
-    def ask(
-        cls,
-        parent: QWidget | None,
-        *,
-        title: str,
-        initial_seconds: float,
-        presets: tuple[tuple[str, int], ...] | None = None,
-    ) -> int | None:
-        dialog = cls(
-            parent,
-            title=title,
-            initial_seconds=initial_seconds,
-            presets=presets,
-        )
-        if dialog.exec() == QDialog.DialogCode.Accepted:
-            return dialog.seconds()
-        return None
 
     # -------------------------------------------------------------- helpers
     @staticmethod
@@ -228,9 +206,8 @@ class TimeSetDialog(QDialog):
 
 
 def ask_for_timer(parent: QWidget | None, initial_seconds: float) -> int | None:
-    return TimeSetDialog.ask(
-        parent,
-        title="Set Timer",
-        initial_seconds=initial_seconds,
-        presets=_TIMER_PRESETS,
-    )
+    dialog = TimeSetDialog(parent, initial_seconds=initial_seconds)
+    accepted = dialog.exec() == QDialog.DialogCode.Accepted
+    seconds = dialog.seconds() if accepted else None
+    dialog.deleteLater()
+    return seconds

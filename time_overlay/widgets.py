@@ -248,6 +248,9 @@ class TimeField(QWidget):
             super().mousePressEvent(event)
 
     def wheelEvent(self, event) -> None:
+        if not self.hasFocus():
+            event.ignore()
+            return
         delta = event.angleDelta().y()
         if delta:
             self.setValue(self._value + (1 if delta > 0 else -1))
@@ -268,8 +271,8 @@ class TimeField(QWidget):
             event.accept()
             return
         if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
-            self.clearFocus()
-            event.accept()
+            # Let the dialog's default button handle Enter.
+            event.ignore()
             return
         if key == Qt.Key.Key_Up:
             self.setValue(self._value + 1)

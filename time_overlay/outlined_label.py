@@ -36,23 +36,11 @@ class OutlinedLabel(QLabel):
         self.setFont(self._base_font())
 
     # ------------------------------------------------------------------ API
-    @property
-    def outline_width(self) -> float:
-        return self._outline_width
-
-    def set_outline_width(self, width: float) -> None:
-        self._outline_width = max(0.0, float(width))
-        self.update()
-
     def outline_color(self) -> QColor:
         return QColor(self._outline_color)
 
     def set_outline_color(self, color: QColor | str) -> None:
         self._outline_color = QColor(color)
-        self.update()
-
-    def set_fill_color(self, color: QColor | str) -> None:
-        self._fill_color = QColor(color)
         self.update()
 
     # ------------------------------------------------------------- geometry

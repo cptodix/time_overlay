@@ -264,6 +264,22 @@ class TimeOverlayWindow(QWidget):
                 for screen in QGuiApplication.screens()
             ):
                 restored = False
+            else:
+                screen = (
+                    QGuiApplication.screenAt(frame.center())
+                    or QGuiApplication.primaryScreen()
+                )
+                if screen is not None:
+                    area = screen.availableGeometry()
+                    width = max(self.minimumWidth(), min(self.width(), area.width()))
+                    height = max(
+                        self.minimumHeight(), min(self.height(), area.height())
+                    )
+                    self.resize(width, height)
+                    self.move(
+                        min(max(self.x(), area.left()), area.right() - width + 1),
+                        min(max(self.y(), area.top()), area.bottom() - height + 1),
+                    )
 
         if not restored:
             self._place_default()
@@ -414,7 +430,7 @@ class TimeOverlayWindow(QWidget):
         # finishes (and beeps) accurately in the background.
         timer_finished = self._timer.tick()
         if timer_finished:
-            QApplication.beep()
+            self._beep()
             if self._mode is Mode.TIMER:
                 self._update_control_labels()
 
@@ -425,6 +441,9 @@ class TimeOverlayWindow(QWidget):
         else:
             self._update_timer_text()
             self._sync_flash_state()
+
+    def _beep(self) -> None:
+        QApplication.beep()
 
     def _update_clock_text(self) -> None:
         self._set_time_text(format_clock(datetime.now(), self._use_24h))
@@ -460,7 +479,14 @@ class TimeOverlayWindow(QWidget):
             self._stopwatch.toggle()
             self._update_stopwatch_text()
         elif self._mode is Mode.TIMER:
+            was_running = self._timer.running
             self._timer.toggle()
+            if (
+                was_running
+                and not self._timer.running
+                and self._timer.remaining() <= 0.0
+            ):
+                self._beep()
             if self._timer.running:
                 self._stop_flash()
             self._update_timer_text()
@@ -568,6 +594,7 @@ class TimeOverlayWindow(QWidget):
         elif chosen is quit_action:
             self.close()
 
+        menu.deleteLater()
         QTimer.singleShot(0, self._refresh_hover_from_cursor)
 
     # -------------------------------------------------------------------- close

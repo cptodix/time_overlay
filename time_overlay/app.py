@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -29,6 +30,25 @@ def _icon_path() -> Path | None:
     return path if path.is_file() else None
 
 
+def _configure_qt_platform() -> None:
+    """Prefer XWayland on Wayland when it is available.
+
+    Native Wayland has no standard always-on-top protocol. Running through
+    XWayland lets the compositor apply the X11 above/utility hints that this
+    app already uses. Set ``TIME_OVERLAY_NATIVE_WAYLAND=1`` to keep native
+    Wayland instead.
+    """
+    if os.environ.get("QT_QPA_PLATFORM"):
+        return
+    if os.environ.get("TIME_OVERLAY_NATIVE_WAYLAND") == "1":
+        return
+    if os.environ.get("XDG_SESSION_TYPE", "").lower() != "wayland":
+        return
+    if not os.environ.get("DISPLAY"):
+        return
+    os.environ["QT_QPA_PLATFORM"] = "xcb"
+
+
 def _lock_path() -> Path:
     config_dir = QStandardPaths.writableLocation(
         QStandardPaths.StandardLocation.AppConfigLocation
@@ -48,8 +68,10 @@ def _acquire_lock(path: Path) -> QLockFile | None:
 
 
 def main(argv: list[str] | None = None) -> int:
+    _configure_qt_platform()
     app = QApplication(argv if argv is not None else sys.argv)
     app.setPalette(dark_palette())
+    app.setDesktopFileName("time-overlay")
     app.setApplicationName("Time Overlay")
     app.setApplicationDisplayName("Time Overlay")
     app.setOrganizationName("Time Overlay")

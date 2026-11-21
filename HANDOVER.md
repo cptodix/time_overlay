@@ -21,7 +21,7 @@ This document is the fast path for a new maintainer or agent. It explains what e
 - The app has no keyboard focus by design (`WindowDoesNotAcceptFocus`), so every core action must remain mouse-accessible.
 - Packaging is script-driven: `packaging/build_windows.bat` and `packaging/build_linux.sh`. There is no `pyproject.toml` / pip-installable package.
 - Releases are manual `workflow_dispatch` runs. The workflow calculates the next `vX.Y.Z` tag from the last tag, runs tests/builds, creates the tag, and publishes the release. It no longer triggers on tag pushes.
-- Current test suite: **44 tests**, all passing headlessly. `ruff check .` and `ruff format --check .` pass.
+- Current test suite: **51 tests**, all passing headlessly. `ruff check .` and `ruff format --check .` pass.
 - Biggest known gap: the app's `time_overlay/__init__.py` version is still static `1.0.0`; the release workflow creates tags but does not update the source version.
 
 ---
@@ -32,7 +32,7 @@ At the time this note was written:
 
 - The implementation and this handover document were present in the working tree (`git status` showed new `time_overlay/`, `tests/`, `packaging/`, `main.py`, `requirements*.txt`, `.github/`, and `HANDOVER.md`).
 - `.gitignore` and `README.md` were modified.
-- The test suite passed headlessly (44 tests), and ruff checks passed.
+- The test suite passed headlessly (51 tests), and ruff checks passed.
 - The release workflow YAML was validated structurally, and its version-bump/tag logic was exercised locally in temporary git repositories.
 - A Linux AppImage was built and run headlessly during development. The generated `build/`, `dist/`, and `.ruff_cache/` outputs were removed afterward.
 - Native Windows building and real X11/Wayland compositor behavior were **not** exercised in the development environment; CI/build scripts cover them conceptually but need a real target machine or GitHub runner to confirm.
@@ -94,8 +94,7 @@ TimeOverlayWindow (QWidget, frameless, translucent)
     ├── left_panel (QWidget, fixed 120 px)
     │   ├── "MODE" label
     │   ├── Clock / Stopwatch / Timer buttons (QButtonGroup, checkable)
-    │   ├── format button (visible only in Clock mode)
-    │   └── Quit button
+    │   └── format button (visible only in Clock mode)
     ├── center (QWidget, expanding)
     │   └── OutlinedLabel (QPainterPath white fill + black stroke)
     ├── right_panel (QWidget, fixed 96 px)
@@ -104,6 +103,7 @@ TimeOverlayWindow (QWidget, frameless, translucent)
     │   ├── Reset
     │   └── Set (Timer only; hidden in Stopwatch/Clock)
     ├── DragHandle (long top-center bar, hidden in ghost mode)
+    ├── close_button (red circular X at top right, hidden in ghost mode)
     └── ResizeGrip (custom 16x16 bottom-right grip, hidden in ghost mode)
 ```
 
@@ -226,7 +226,7 @@ Not persisted: mode, timer duration, stopwatch state. The app always starts in C
 | Path | Responsibility |
 |---|---|
 | `main.py` | Direct/PyInstaller entry point |
-| `time_overlay/app.py` | `QApplication` bootstrap, dark palette, single-instance lock, metadata, and runtime app icon |
+| `time_overlay/app.py` | `QApplication` bootstrap, Wayland/XWayland selection, dark palette, single-instance lock, metadata, and runtime app icon |
 | `time_overlay/window.py` | Main window, layout, modes, hover, drag, resize, flash, context menu, settings |
 | `time_overlay/outlined_label.py` | `OutlinedLabel`: `QPainterPath` stroke/fill, centering, binary-search font fitting |
 | `time_overlay/core.py` | Qt-free `Stopwatch`, `CountdownTimer`, formatters |
@@ -298,7 +298,7 @@ FramelessWindowHint | WindowStaysOnTopHint | Tool | WindowDoesNotAcceptFocus
 plus `WA_ShowWithoutActivating`. This keeps the overlay from stealing focus from the user's active application. Consequences:
 
 - No keyboard shortcuts on the main overlay.
-- Every core action must be mouse-accessible: mode buttons, Start/Pause, Reset, Set, Quit, context menu, drag/resize handles.
+- Every core action must be mouse-accessible: mode buttons, Start/Pause, Reset, Set, the red X, context menu, drag/resize handles.
 - The modal set dialog calls `raise_()`/`activateWindow()` in `showEvent`, and it can receive keyboard input; however, if a WM refuses, the −/+ buttons and presets keep it usable with the mouse.
 
 ### 6.9 Windows topmost is re-asserted
@@ -307,9 +307,9 @@ plus `WA_ShowWithoutActivating`. This keeps the overlay from stealing focus from
 
 ### 6.10 Linux is best-effort
 
-On X11 (`QGuiApplication.platformName() == "xcb"`), the app sets `WA_X11NetWmWindowTypeUtility`. Setting `TIME_OVERLAY_X11_DOCK=1` switches to the dock attribute for stubborn WMs. On Wayland, only Qt's `Tool`/`WindowStaysOnTopHint` hints are available; the compositor decides. This is a platform limitation, not a bug.
+On X11 (`QGuiApplication.platformName() == "xcb"`), the app sets `WA_X11NetWmWindowTypeUtility`. Setting `TIME_OVERLAY_X11_DOCK=1` switches to the dock attribute for stubborn WMs. On a Wayland session the app defaults to XWayland when `DISPLAY` is set, so this X11 path also applies; `TIME_OVERLAY_NATIVE_WAYLAND=1` keeps native Wayland, where only Qt's `Tool`/`WindowStaysOnTopHint` hints are available and the compositor decides. This is a platform limitation, not a bug.
 
-A 2-second `QTimer` in `platform_hints._setup_linux()` calls `reassert_topmost()`, which invokes `window.raise_()` on Linux (and native `SetWindowPos` on Windows). It skips raising while `QApplication.activeModalWidget()` or `activePopupWidget()` is set, so the set dialog and context menu are not covered. Wayland compositors may ignore `raise_()` entirely.
+A 2-second `QTimer` in `platform_hints._setup_linux()` calls `reassert_topmost()`, which invokes `window.raise_()` on Linux (and native `SetWindowPos` on Windows). It skips raising while `QApplication.activeModalWidget()` or `activePopupWidget()` is set, so the set dialog and context menu are not covered. Under native Wayland, compositors may ignore `raise_()` entirely; under XWayland it uses the X11 path.
 
 ### 6.11 The three-column layout is fixed
 
@@ -375,6 +375,28 @@ verify digit contrast under the target platform style.
 The application-wide `dark_palette()` is still applied in `app.main()` for
 labels, buttons, menus, and any future native widgets.
 
+### 6.18 The close control is a top-right red X
+
+`close_button` is a 24×24 `QPushButton` child of the container, styled by
+`QPushButton#closeButton` in `ACTIVE_STYLESHEET`. `_position_handles()` places
+it at the top right, outside the centered drag bar. It is hidden in ghost mode
+and shown/raised on hover. It is not part of the left panel; the old left-panel
+Quit button was removed. The context-menu Quit action remains.
+
+### 6.19 The finish beep repeats until a button is clicked
+
+`_finish_beep_timer` is a 1-second repeating `QTimer`. `_on_tick()` beeps once
+and starts it when `CountdownTimer.tick()` reports the finish. `_on_finish_beep()`
+beeps every second while the timer is still stopped at zero; it stops itself if
+the timer is restarted or reset.
+
+Every button stops it via `_stop_finish_beep()`: mode buttons, the 12/24-hour
+toggle, Start/Pause, Reset, Set, and the red X. An application-level event
+filter also stops it on any mouse press, which covers the Set dialog and the
+context menu. `closeEvent()` stops it. If you add a new button, connect its
+`clicked` signal to `_stop_finish_beep()` as well; otherwise the ding keeps
+going after the user acknowledges the timer.
+
 ---
 
 ## 7. Tests and quality gates
@@ -391,8 +413,8 @@ ruff format --check .
 ### What is covered
 
 - `tests/test_core.py` (19 tests): stopwatch start/pause/resume/toggle, including reset-while-running and reset-while-paused; countdown start/pause/reset/set/tick/finish/restart; 12/24-hour formatting including midnight/noon; stopwatch/countdown formatting and rounding.
-- `tests/test_ui.py` (24 tests): required window flags/attributes and `WA_QuitOnClose`; app icon loading; initial Clock/ghost state; content visibility and background on hover; mode text; clock format toggle and active-mode text preservation; font growth on resize; font/layout stability across ghost mode; geometry clamping; background timer completion; stopwatch controls and reset-while-running; timer reset gating; pause-at-zero beep; drag handle; resize grip; set-dialog quit behavior and deletion; context-menu deletion; dark palette values; `TimeField` typing/clamping, wheel focus, and Enter submit; and a pixel check that every set-dialog value is painted white.
-- `tests/test_app.py` (1 test): the single-instance lock refuses a second holder.
+- `tests/test_ui.py` (27 tests): required window flags/attributes and `WA_QuitOnClose`; app icon loading; initial Clock/ghost state; content visibility and background on hover; mode text; clock format toggle and active-mode text preservation; font growth on resize; font/layout stability across ghost mode; geometry clamping; background timer completion; stopwatch controls and reset-while-running; timer reset gating; pause-at-zero beep; repeating finish beep stopped by a button or any click; red close button; drag handle; resize grip; set-dialog quit behavior and deletion; context-menu deletion; dark palette values; `TimeField` typing/clamping, wheel focus, and Enter submit; and a pixel check that every set-dialog value is painted white.
+- `tests/test_app.py` (5 tests): the single-instance lock refuses a second holder; Wayland defaults to XWayland, respects the native opt-out and an explicit `QT_QPA_PLATFORM`, and stays native without `DISPLAY`.
 
 ### What is **not** covered automatically
 
@@ -585,15 +607,17 @@ The workflow-level permission is `contents: read`. Only the `release` job gets `
 
 ### Linux Wayland
 
-- Compositors intentionally restrict client-controlled always-on-top. `Tool` + `WindowStaysOnTopHint` are best-effort.
-- KDE and some wlroots-based compositors generally honor it; GNOME may not.
-- The periodic `raise_()` may be ignored entirely; Wayland does not provide a portable always-on-top protocol for normal clients.
-- The X11 attributes are not applied under Wayland.
-- Testing on X11 is the most reliable way to verify stacking behavior.
+- Native Wayland has no standard always-on-top protocol for normal application windows. `Tool` + `WindowStaysOnTopHint` are best-effort; KDE and some wlroots-based compositors may honor them, GNOME generally does not.
+- To get an automatic X11-style above hint, `app._configure_qt_platform()` defaults to **XWayland** when `XDG_SESSION_TYPE=wayland` and `DISPLAY` is set. It sets `QT_QPA_PLATFORM=xcb` before `QApplication` is created, so the X11 utility/dock hints and the 2-second restack apply.
+- `TIME_OVERLAY_NATIVE_WAYLAND=1` opts out and keeps native Wayland. An explicit `QT_QPA_PLATFORM` also wins.
+- `app.main()` calls `QApplication.setDesktopFileName("time-overlay")`, giving the compositor the app_id/WM_CLASS used by window rules and the desktop entry.
+- Layer-shell (`zwlr_layer_shell_v1`) is the only real Wayland always-on-top path, but it is compositor-specific and turns the window into a panel surface; Qt does not expose it, so it is not used here.
+- The periodic `raise_()` may be ignored under native Wayland.
+- Testing on X11 or XWayland is the most reliable way to verify stacking behavior.
 
 ### Focus
 
-The overlay never takes focus. The context menu, mode buttons, action buttons, and Quit button are the intended controls. The set dialog is a separate modal window and calls `activateWindow()`, but its −/+ buttons and presets are the fallback if keyboard focus is refused.
+The overlay never takes focus. The context menu, mode buttons, action buttons, and red X are the intended controls. The set dialog is a separate modal window and calls `activateWindow()`, but its −/+ buttons and presets are the fallback if keyboard focus is refused.
 
 ### Click-through
 
@@ -602,6 +626,8 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 ---
 
 ## 11. Known gaps / likely next tasks
+
+See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the user-facing issue list with workarounds, risks, and TODO items.
 
 1. **Persist more state** — mode, timer duration, and perhaps stopwatch state. Currently only clock format and geometry persist.
 2. **AppImage size/startup** — consider PyInstaller `--onedir` inside the AppDir.
@@ -624,7 +650,8 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 | Symptom | Likely cause / fix |
 |---|---|
 | Black or square background on Linux | No compositor, or translucency unsupported. Enable compositing; test on X11. |
-| Overlay is not above fullscreen apps | Windows: check the 2 s topmost timer / `SetWindowPos`. X11: try `TIME_OVERLAY_X11_DOCK=1`. Wayland: compositor policy. |
+| Overlay is not above fullscreen apps | Windows: check the 2 s topmost timer / `SetWindowPos`. X11: try `TIME_OVERLAY_X11_DOCK=1`. Wayland: the app defaults to XWayland when `DISPLAY` is set; if it still loses, the compositor policy wins. |
+| Want native Wayland instead of XWayland | Launch with `TIME_OVERLAY_NATIVE_WAYLAND=1`. Always-on-top then depends on the compositor; GNOME generally will not honor it. |
 | Cannot type in the Set dialog | Window manager refused focus for a non-activating parent. Use the −/+ buttons or presets. |
 | Set dialog numbers are invisible | The dialog should use `widgets.TimeField` (custom-painted digits), not `QSpinBox`. If you see empty fields, confirm `dialogs.py` imports `TimeField`, rebuild, and run `test_set_dialog_values_are_painted_white`. `TimeField.paintEvent` sets an explicit white `QPainter` pen, so native styles cannot hide the value. |
 | Closing the Set dialog exits the app | Verify `TimeOverlayWindow` has `WA_QuitOnClose=True` and `TimeSetDialog` has `WA_QuitOnClose=False`. Tool windows default to false; QDialog defaults to true. |
@@ -632,7 +659,7 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 | Timer Reset button is disabled | By design while the timer is running. Pause first; `_update_control_labels()` re-enables it. |
 | Window cannot be dragged | Use the long drag bar across the top (five centered dots). It tries the compositor `startSystemMove()` first and falls back to manual `move()`. On Wayland, the compositor may still refuse client-initiated moves. Drag-anywhere was intentionally removed. |
 | Time text grows when the cursor leaves | The fixed 3-column layout / transparent 1 px ghost border is not in effect, or something is calling `_fit_time_font()` on hover. |
-| Overlay drops below other windows after focus change | Linux: the 2 s `raise_()` timer is best-effort; X11 WMs may need `TIME_OVERLAY_X11_DOCK=1`; Wayland compositors may ignore raise/topmost requests entirely. |
+| Overlay drops below other windows after focus change | Linux: the 2 s `raise_()` timer is best-effort; X11 WMs may need `TIME_OVERLAY_X11_DOCK=1`; native Wayland compositors may ignore raise/topmost requests entirely. |
 | Keyboard shortcuts do nothing | By design: `WindowDoesNotAcceptFocus`. Use mouse/context menu. |
 | AppImage does not start | FUSE missing or incompatible. Run `APPIMAGE_EXTRACT_AND_RUN=1 ./dist/TimeOverlay-*.AppImage`. |
 | Linux build hangs downloading | appimagetool/runtime download/network issue. The script caches under `build/`; check proxy/curl. |
@@ -649,18 +676,19 @@ Ghost mode is visual only. The transparent window area still receives mouse even
 
 ## 13. First-day handover checklist
 
-- [ ] Read `README.md` and this file.
+- [ ] Read `README.md`, `KNOWN_ISSUES.md`, and this file.
 - [ ] Run `QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v`.
 - [ ] Run `ruff check .` and `ruff format --check .` (install ruff first).
 - [ ] Run `python main.py` on the target platform and manually verify:
   - [ ] Clock ticks; 12/24 toggle; right column is blank in Clock mode.
   - [ ] Stopwatch Start/Pause/Reset; Reset while running keeps it running from zero.
-  - [ ] Timer Set/presets/start/pause; Reset is disabled while running; reset after pausing; zero flash and beep.
+  - [ ] Timer Set/presets/start/pause; Reset is disabled while running; reset after pausing; zero flash and beep every second until a button is clicked.
   - [ ] Hover reveals panel contents; leaving enters ghost mode; the time text does not move or grow.
   - [ ] Drag the centered top bar; bottom-right grip resizes.
   - [ ] Closing the Set dialog via Set/Cancel/window close does not quit the app.
   - [ ] Timer field values are clearly visible and editable (type, +/−, presets).
   - [ ] Right-click menu: center, format, quit.
+  - [ ] The red X appears on hover and exits the app.
   - [ ] Geometry and 24-hour setting survive restart.
   - [ ] Launching a second copy shows the "already running" notice and exits.
 - [ ] Build the Linux AppImage and run it (`APPIMAGE_EXTRACT_AND_RUN=1` if no FUSE).

@@ -1,42 +1,133 @@
-# Time Overlay
+<p align="center">
+  <img src="packaging/time_overlay_icon.svg" width="96" height="96" alt="Time Overlay icon">
+</p>
+<h1 align="center">Time Overlay</h1>
+<p align="center">A frameless, always-on-top clock, stopwatch, and countdown timer for Windows and Linux.</p>
 
-A frameless, always-on-top clock, stopwatch and countdown timer for **Windows and Linux**, built with **Python 3 + PyQt6**.
+Time Overlay keeps the time in sight without taking over your desktop. It shows large white time with a black outline. Hover over it to reveal the controls; move the cursor away and only the time remains.
 
-The overlay shows large white time text with a black outline. Hovering reveals the mode and control panels; moving the cursor away leaves only the outlined time floating on screen ("ghost mode").
+## What you can do
 
-```
-┌──────────────────────────────────────────────────────────────────────┐
-│  MODE              ┌────────────────────────────┐      CONTROLS      │
-│  [ Clock     ]     │                            │      [ Start   ]   │
-│  [ Stopwatch ]     │        12:34:56            │      [ Reset   ]   │
-│  [ Timer     ]     │                            │      [ Set     ]   │
-│  24-hour clock     └────────────────────────────┘                    │
-│  Quit                                                                │
-└──────────────────────────────────────────────────────────────────────┘
-```
+- Run a **clock**, **stopwatch**, and **countdown timer** in one small overlay.
+- Hover to show the mode and control panels; leave the window for a clean "ghost mode".
+- Drag the top bar to move the window and use the bottom-right grip to resize it.
+- Keep the overlay above other application on Windows and Linux.
 
-The three columns always keep their width. In Clock mode the right column is blank; Stopwatch uses only Start/Pause and Reset; Timer adds Set.
+## Screenshots
 
-## Features
+<p align="center">
+  <img src="Screenshots/clock.png" width="820" alt="Time Overlay clock mode with the mode and control panels visible">
+</p>
+<p align="center"><em>Clock mode, with the mode and control panels revealed.</em></p>
 
-- **Clock** — live local time, 12/24-hour toggle, updates instantly.
-- **Stopwatch** — Start/Pause and Reset, centisecond precision backed by `time.perf_counter()`. Reset zeroes the elapsed time but keeps a running stopwatch running.
-- **Timer** — countdown with quick presets, HH:MM:SS entry, Start/Pause, Reset, and Set. Reset is disabled while the timer is running; pause first. A flashing red/white outline plus a system beep marks `00:00:00`.
-- **Outlined text** — custom `OutlinedLabel` paints white glyphs with a 3 px black `QPainterPath` stroke for visibility over any content.
-- **Fixed three-column layout** — mode column, time column, controls column. The time font is fitted on window resize and mode/text changes, not when panels are hidden, so the clock does not grow when the cursor leaves.
-- **Ghost mode** — panel contents and the dark rounded background disappear when the cursor leaves the window; the columns stay in place and the outlined time remains.
-- **Drag handle** — a long, centered bar across the top moves the window; the bottom-right grip resizes it. Both use Qt's system move/resize when available, which is the portable path on Wayland, with a direct-geometry fallback.
-- **Always on top** — frameless tool window with Windows native topmost re-enforcement every 2 seconds, plus a periodic Linux restack attempt and X11 utility hints.
-- **Remembers position** — window geometry and clock format are stored with `QSettings`.
-- **Single instance** — launching a second copy shows a notice and exits, so two overlays cannot fight over the settings.
+<p align="center">
+  <img src="Screenshots/clock_action.png" width="960" alt="Time Overlay in ghost mode over a web browser">
+</p>
+<p align="center"><em>Ghost mode over a browser: only the outlined time remains.</em></p>
 
-## Requirements
+<details>
+<summary>More screenshots</summary>
+
+<p align="center">
+  <img src="Screenshots/stopwatch.png" width="820" alt="Stopwatch mode"><br>
+  <em>Stopwatch</em>
+</p>
+<p align="center">
+  <img src="Screenshots/timer.png" width="820" alt="Timer mode"><br>
+  <em>Timer</em>
+</p>
+<p align="center">
+  <img src="Screenshots/timeup_action.png" width="960" alt="Timer finished in ghost mode"><br>
+  <em>Timer finished over a browser.</em>
+</p>
+
+</details>
+
+## Download and run
+
+Get the latest build from the **[GitHub Releases page](https://github.com/cptodix/time_overlay/releases/latest)**.
+
+The release files are portable: you do not need Python installed.
+
+### Windows
+
+1. Download `TimeOverlay-<version>-windows-x64.exe`.
+2. Double-click the file.
+3. If Windows SmartScreen warns, choose **More info** → **Run anyway**. The EXE is not code-signed.
+
+There is no installer and no console window. The overlay appears near the bottom of the screen.
+
+### Linux
+
+1. Download `TimeOverlay-<version>-x86_64.AppImage` (or `aarch64` on ARM).
+2. Make it executable and run it:
+
+   ```bash
+   chmod +x TimeOverlay-<version>-x86_64.AppImage
+   ./TimeOverlay-<version>-x86_64.AppImage
+   ```
+
+3. If FUSE 2 is not installed, run it in extract-and-run mode:
+
+   ```bash
+   APPIMAGE_EXTRACT_AND_RUN=1 ./TimeOverlay-<version>-x86_64.AppImage
+   ```
+
+The AppImage can be moved anywhere. Nothing is installed into the system.
+
+### First launch
+
+- The overlay starts in **Clock** mode near the bottom of the primary screen.
+- Hover over it to show the controls.
+- Only one copy runs at a time. Starting a second copy shows an "already running" notice.
+- Settings are stored locally with Qt's `QSettings`; no account or network connection is used.
+
+## Using the overlay
+
+| Mode | Controls |
+| --- | --- |
+| **Clock** | `Clock`, `Stopwatch`, `Timer`, and the 12/24-hour toggle. The right column is blank. |
+| **Stopwatch** | `Start`/`Pause`, `Reset`. Reset zeroes the time but keeps a running stopwatch running. |
+| **Timer** | `Start`/`Pause`, `Reset`, `Set`. Reset is disabled while the timer is running; pause first. |
+
+- **Hover** over the window to reveal the panel contents, the drag and resize grips, and the red X.
+- **Move the cursor away** to enter ghost mode: the panels and dark background disappear, leaving only the outlined time.
+- **Drag** the centered bar across the top to move the window.
+- **Resize** with the grip in the bottom-right corner.
+- **Right-click** for the menu: center on screen, switch 12/24-hour clock, or quit.
+- **Click the red X** at the top right to exit.
+
+### Timer behavior
+
+- `Set` opens a modal HH:MM:SS picker with 1/5/10/15/25/45-minute presets.
+- The `Set` button is disabled for a zero-length timer.
+- On reaching zero the timer stops, flashes the outline red/white, and beeps once per second.
+- The beep repeats until you click anywhere, including Start/Pause, Reset, Set, a mode button, the 12/24-hour toggle, or the red X.
+- `Reset` is only available while the timer is paused or finished.
+
+## Known issues
+
+These are the current user-facing limits. Full details, workarounds, risks, and future work are in **[KNOWN_ISSUES.md](KNOWN_ISSUES.md)**.
+
+- **Fullscreen presentations can cover the overlay.** Exclusive fullscreen takes over the display and no normal app can draw above it. Use borderless/windowed fullscreen or a second display. On X11, try `TIME_OVERLAY_X11_DOCK=1`.
+- **Native Wayland always-on-top is compositor-dependent.** The app defaults to XWayland when `DISPLAY` is available. Set `TIME_OVERLAY_NATIVE_WAYLAND=1` to stay on native Wayland.
+- **The Windows EXE is unsigned**, so SmartScreen may warn.
+- **The AppImage needs FUSE 2**, or start it with `APPIMAGE_EXTRACT_AND_RUN=1`.
+- **The timer beep uses the system bell**, which can be silent if the desktop bell is disabled.
+- **Mode, timer, and stopwatch state are not saved** across restarts.
+- **Long times cap at `99:59:59`.**
+
+## For developers and contributors
+
+### Requirements
 
 - Python **3.10+**
-- PyQt6 6.6+
-- Windows 10/11 or a Linux desktop with a compositor (X11 or Wayland)
+- PyQt6 **6.6+**
+- Windows 10/11, or a Linux desktop with a compositor (X11 or Wayland)
 
-## Run from source
+The release binaries do not need Python or PyQt6 installed.
+
+### Run from source
 
 ```bash
 python3 -m venv .venv
@@ -51,46 +142,17 @@ You can also run the package directly:
 python -m time_overlay
 ```
 
-## Usage
+### Platform support
 
-| Mode | Controls |
-| --- | --- |
-| **Clock** | Left panel: `Clock`, `Stopwatch`, `Timer`, 12/24-hour toggle, `Quit`. The right column is blank. |
-| **Stopwatch** | `Start`/`Pause`, `Reset` — reset zeroes the time and keeps a running stopwatch running |
-| **Timer** | `Start`/`Pause`, `Reset`, `Set` (HH:MM:SS picker with 1/5/10/15/25/45-minute presets); `Reset` is disabled while running |
+- **Windows:** native topmost is reasserted with `SetWindowPos(HWND_TOPMOST)` every 2 seconds.
+- **Linux X11:** utility/dock hints plus a 2-second restack. Set `TIME_OVERLAY_X11_DOCK=1` for window managers that keep fullscreen windows above normal topmost clients.
+- **Linux Wayland:** the app defaults to XWayland when `DISPLAY` is available, so the X11 above hints can apply. Native Wayland topmost is controlled by the compositor; set `TIME_OVERLAY_NATIVE_WAYLAND=1` to keep native Wayland.
 
-- **Hover** over the window to reveal the panel contents, the drag/resize grips, and the dark rounded background.
-- **Move the cursor outside** the window to enter ghost mode: only the outlined time stays visible. The fixed three-column layout means the time does not move or grow.
-- **Drag** the centered bar across the top to reposition the window.
-- **Resize** with the grip in the bottom-right corner.
-- **Right-click** anywhere for the context menu: center on screen, switch 12/24-hour clock, or quit.
-- The `Quit` button in the left panel also exits the app.
+See [KNOWN_ISSUES.md](KNOWN_ISSUES.md) for the fullscreen-presentation limitation and the remaining platform work.
 
-### Timer behavior
+### Packaging
 
-- `Set` opens a modal picker. Presets apply instantly; the `Set` button stays disabled for a zero-length timer.
-- `Reset` is only available while the timer is paused or finished. Pause a running timer first.
-- On reaching zero the timer stops, beeps, and flashes the outline red/white. Press `Reset`, `Set`, or `Start` to leave the finished state.
-
-## Platform notes
-
-### Windows
-
-The window uses `FramelessWindowHint | WindowStaysOnTopHint | Tool | WindowDoesNotAcceptFocus`. A `QTimer` calls `user32.SetWindowPos(HWND_TOPMOST, ..., SWP_NOACTIVATE)` every 2 seconds, which keeps the overlay above full-screen presentations and games that try to take the topmost slot.
-
-### Linux
-
-Qt's `Tool`/utility window hint and `WindowStaysOnTopHint` are used. On X11 the app additionally sets `WA_X11NetWmWindowTypeUtility`. A 2-second timer calls `raise_()` to recover if the window manager lowers the overlay after focus changes; it is skipped while the set dialog or context menu is open. Some window managers still place full-screen windows above normal topmost clients. If your X11 WM does this, launch with:
-
-```bash
-TIME_OVERLAY_X11_DOCK=1 python main.py
-```
-
-which requests an X11 dock-type window instead. Wayland compositors intentionally restrict client-controlled always-on-top and may also restrict client-initiated window positioning/resizing; the drag and resize grips use Qt's system move/resize operations first for this reason. Behavior depends on the compositor (KDE and some wlroots compositors generally honor it, GNOME may not). A compositor is required for the transparent background and rounded corners.
-
-## Packaging
-
-### Windows — portable single-file EXE
+#### Windows — portable single-file EXE
 
 The app icon source is `packaging/time_overlay_icon.svg`. The build script renders it to PNG/ICO, then runs PyInstaller:
 
@@ -110,7 +172,7 @@ python -m PyInstaller --noconfirm --clean --onefile --noconsole ^
 
 Output: `dist\TimeOverlay.exe` — a portable single-file executable with no installer and no console window.
 
-### Linux — standalone AppImage
+#### Linux — standalone AppImage
 
 ```bash
 chmod +x packaging/build_linux.sh packaging/AppRun
@@ -161,46 +223,52 @@ Release assets (example for `v1.2.3`):
 
 The Linux artifact is built on Ubuntu 22.04 for broad glibc compatibility.
 
-## Tests
+### Tests
 
 ```bash
 QT_QPA_PLATFORM=offscreen python3 -m unittest discover -s tests -v
 ```
 
 - `tests/test_core.py` covers the Qt-free stopwatch/countdown state machines and formatting.
-- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, geometry clamping, the drag/resize grips, the set dialog (including a pixel check that field values are painted white, a deletion check, and keyboard/wheel behavior), and the app icon.
-- `tests/test_app.py` checks that a second process cannot take the single-instance lock.
+- `tests/test_ui.py` is a headless smoke test for window flags, ghost-mode visibility, mode switching, timer controls, clock format, responsive font scaling, geometry clamping, the red close button, the repeating finish beep stopped by a click, the drag/resize grips, the set dialog (including a pixel check that field values are painted white, a deletion check, and keyboard/wheel behavior), and the app icon.
+- `tests/test_app.py` checks the single-instance lock and the Wayland/XWayland platform selection.
 
-The suite currently contains **44 tests**.
+The suite currently contains **51 tests**.
 
-## Project layout
+### Project layout
 
-```
+```text
 main.py                       PyInstaller/direct entry point
 HANDOVER.md                   Maintainer handover, architecture and release context
+KNOWN_ISSUES.md               Known limits, workarounds, risks and future work
+AGENTS.md                     Rules for automated agents working in the repo
+Screenshots/                  User-facing screenshots used by this README
 time_overlay/
-  app.py                      QApplication bootstrap
-  window.py                   Overlay window, modes, hover, drag, flashing
+  app.py                      QApplication bootstrap, platform choice, single instance
+  window.py                   Overlay window, modes, hover, drag, beeping
   outlined_label.py           QPainterPath outlined-text widget
   core.py                     Stopwatch, CountdownTimer, formatters
   dialogs.py                  HH:MM:SS set dialog with presets
   widgets.py                  Drag/resize grips and the painted time field
   platform_hints.py           Windows topmost + Linux X11/Wayland hints
-  theme.py                    Qt stylesheets
+  theme.py                    Qt stylesheets and dark palette
 packaging/
   build_windows.bat           PyInstaller one-file build
   build_linux.sh              AppImage build
   make_icon.py                SVG-to-PNG/ICO icon renderer
   time_overlay_icon.svg       Source app icon
   AppRun, time-overlay.desktop
-tests/                        unittest suite
+tests/
+  test_core.py                Core state machines and formatting
+  test_ui.py                  Headless UI/behaviour tests
+  test_app.py                 Bootstrap and platform-selection tests
 .github/workflows/release.yml Manual version-bump Windows + Linux release
 ```
 
-## Maintainer handover
+### Maintainer handover
 
 See [HANDOVER.md](HANDOVER.md) for architecture, invariants, packaging and release-workflow details, known gaps, troubleshooting, and a first-day checklist.
 
-## License
+### License
 
 GNU General Public License v3.0 or later. See [LICENSE](LICENSE).

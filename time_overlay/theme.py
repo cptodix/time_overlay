@@ -84,6 +84,21 @@ QPushButton#startButton {{
 QPushButton#startButton:hover {{
     background-color: rgba({ACCENT_RGB}, 135);
 }}
+QPushButton#closeButton {{
+    background-color: #e5484d;
+    color: #ffffff;
+    border: 1px solid #ff7b7f;
+    border-radius: 12px;
+    padding: 0;
+    font-size: 15px;
+    font-weight: 700;
+}}
+QPushButton#closeButton:hover {{
+    background-color: #ff5c61;
+}}
+QPushButton#closeButton:pressed {{
+    background-color: #c73b40;
+}}
 QPushButton#subtleButton {{
     color: rgba(255, 255, 255, 150);
     background-color: transparent;

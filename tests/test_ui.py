@@ -83,7 +83,7 @@ class WindowTests(unittest.TestCase):
 
     def test_starts_in_clock_ghost_mode(self) -> None:
         self.assertEqual(self.window.mode, Mode.CLOCK)
-        self.assertTrue(self.window.quit_button.isHidden())
+        self.assertTrue(self.window.close_button.isHidden())
         self.assertTrue(self.window.format_button.isHidden())
         self.assertTrue(self.window.start_button.isHidden())
         self.assertTrue(self.window.reset_button.isHidden())
@@ -92,7 +92,7 @@ class WindowTests(unittest.TestCase):
 
     def test_hover_reveals_panels_and_background(self) -> None:
         self.window.set_hovered(True)
-        self.assertFalse(self.window.quit_button.isHidden())
+        self.assertFalse(self.window.close_button.isHidden())
         self.assertFalse(self.window.format_button.isHidden())
         self.assertTrue(self.window.start_button.isHidden())  # clock has no controls
         self.assertTrue(self.window.reset_button.isHidden())
@@ -111,7 +111,7 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(self.window.set_button.isHidden())
 
         self.window.set_hovered(False)
-        self.assertTrue(self.window.quit_button.isHidden())
+        self.assertTrue(self.window.close_button.isHidden())
         self.assertTrue(self.window.start_button.isHidden())
         self.assertTrue(self.window.reset_button.isHidden())
         self.assertTrue(self.window.set_button.isHidden())
@@ -273,6 +273,36 @@ class WindowTests(unittest.TestCase):
         self.assertFalse(self.window._timer.running)
         self.assertEqual(self.window._timer.remaining(), 0.0)
 
+    def test_finish_beep_repeats_until_button(self) -> None:
+        clock = _FakeClock()
+        self.window._timer = CountdownTimer(0.01, clock)
+        self.window.set_mode(Mode.TIMER)
+        self.window.set_hovered(True)
+        self.window._timer.start()
+        clock.now = 1.0
+        self.window._beep = Mock()
+
+        self.window._on_tick()
+        self.assertEqual(self.window._beep.call_count, 1)
+        self.assertTrue(self.window._finish_beep_timer.isActive())
+
+        self.window._on_finish_beep()
+        self.assertEqual(self.window._beep.call_count, 2)
+
+        self.window.start_button.click()
+        self.assertFalse(self.window._finish_beep_timer.isActive())
+
+    def test_any_click_stops_finish_beep(self) -> None:
+        self.window.show()
+        self.app.processEvents()
+        self.window._finish_beep_timer.start()
+        self.assertTrue(self.window._finish_beep_timer.isActive())
+
+        QTest.mouseClick(
+            self.window.container, Qt.MouseButton.LeftButton, pos=QPoint(5, 5)
+        )
+        self.assertFalse(self.window._finish_beep_timer.isActive())
+
     def test_resize_grip_resizes_window(self) -> None:
         self.window.resize(960, 300)
         self.window.show()
@@ -324,6 +354,17 @@ class WindowTests(unittest.TestCase):
         self.app.processEvents()
 
         self.assertNotEqual(self.window.pos(), start)
+
+    def test_close_button_closes_window(self) -> None:
+        self.window.show()
+        self.app.processEvents()
+        self.window.set_hovered(True)
+        self.app.processEvents()
+        self.assertFalse(self.window.close_button.isHidden())
+
+        self.window.close_button.click()
+        self.app.processEvents()
+        self.assertFalse(self.window.isVisible())
 
     def test_set_dialog_does_not_quit_app(self) -> None:
         dialog = TimeSetDialog(self.window, initial_seconds=300)

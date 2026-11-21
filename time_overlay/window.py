@@ -88,6 +88,9 @@ class TimeOverlayWindow(QWidget):
 
         self._build_ui()
         self._build_timers()
+        app = QApplication.instance()
+        if app is not None:
+            app.installEventFilter(self)
         self._restore_geometry()
 
         self.set_mode(Mode.CLOCK)
@@ -141,6 +144,7 @@ class TimeOverlayWindow(QWidget):
             button.clicked.connect(
                 lambda _checked=False, selected=mode: self.set_mode(selected)
             )
+            button.clicked.connect(self._stop_finish_beep)
             self._mode_group.addButton(button)
             self._mode_buttons[mode] = button
             left.addWidget(button)
@@ -152,16 +156,10 @@ class TimeOverlayWindow(QWidget):
         self.format_button.setCursor(Qt.CursorShape.PointingHandCursor)
         self.format_button.setToolTip("Toggle between 12-hour and 24-hour clock")
         self.format_button.clicked.connect(self._toggle_clock_format)
+        self.format_button.clicked.connect(self._stop_finish_beep)
         left.addWidget(self.format_button)
 
         left.addStretch(1)
-
-        self.quit_button = QPushButton("Quit")
-        self.quit_button.setObjectName("subtleButton")
-        self.quit_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.quit_button.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.quit_button.clicked.connect(self.close)
-        left.addWidget(self.quit_button)
 
         root.addWidget(self.left_panel)
 
@@ -203,7 +201,6 @@ class TimeOverlayWindow(QWidget):
             left_title,
             *self._mode_buttons.values(),
             self.format_button,
-            self.quit_button,
         ]
         self._right_content_widgets = [
             right_title,
@@ -218,6 +215,16 @@ class TimeOverlayWindow(QWidget):
         self.drag_handle = DragHandle(self, self.container)
         self.drag_handle.hide()
 
+        self.close_button = QPushButton("\u2715", self.container)
+        self.close_button.setObjectName("closeButton")
+        self.close_button.setFixedSize(24, 24)
+        self.close_button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.close_button.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.close_button.setToolTip("Quit")
+        self.close_button.clicked.connect(self._stop_finish_beep)
+        self.close_button.clicked.connect(self.close)
+        self.close_button.hide()
+
         # Only the container needs the resize notification used to reposition
         # the two grips; dragging is handled by the explicit drag handle.
         self.container.installEventFilter(self)
@@ -230,6 +237,7 @@ class TimeOverlayWindow(QWidget):
         button.setCursor(Qt.CursorShape.PointingHandCursor)
         button.setMinimumHeight(38)
         button.clicked.connect(slot)
+        button.clicked.connect(self._stop_finish_beep)
         return button
 
     def _build_timers(self) -> None:
@@ -246,6 +254,10 @@ class TimeOverlayWindow(QWidget):
         self._fit_timer.setSingleShot(True)
         self._fit_timer.setInterval(0)
         self._fit_timer.timeout.connect(self._fit_time_font)
+
+        self._finish_beep_timer = QTimer(self)
+        self._finish_beep_timer.setInterval(1000)
+        self._finish_beep_timer.timeout.connect(self._on_finish_beep)
 
     # --------------------------------------------------------------- geometry
     def _restore_geometry(self) -> None:
@@ -321,6 +333,8 @@ class TimeOverlayWindow(QWidget):
             handle_width = max(200, self.container.width() - 80)
             handle_x = max(0, (self.container.width() - handle_width) // 2)
             self.drag_handle.setGeometry(handle_x, 2, handle_width, 14)
+        if hasattr(self, "close_button"):
+            self.close_button.move(max(0, self.container.width() - 32), 4)
 
     def resizeEvent(self, event) -> None:
         super().resizeEvent(event)
@@ -403,12 +417,15 @@ class TimeOverlayWindow(QWidget):
         if self._hovered:
             self.size_grip.show()
             self.drag_handle.show()
+            self.close_button.show()
             self.size_grip.raise_()
             self.drag_handle.raise_()
+            self.close_button.raise_()
             self._position_handles()
         else:
             self.size_grip.hide()
             self.drag_handle.hide()
+            self.close_button.hide()
 
     def enterEvent(self, event) -> None:
         self.set_hovered(True)
@@ -431,6 +448,7 @@ class TimeOverlayWindow(QWidget):
         timer_finished = self._timer.tick()
         if timer_finished:
             self._beep()
+            self._finish_beep_timer.start()
             if self._mode is Mode.TIMER:
                 self._update_control_labels()
 
@@ -444,6 +462,15 @@ class TimeOverlayWindow(QWidget):
 
     def _beep(self) -> None:
         QApplication.beep()
+
+    def _on_finish_beep(self) -> None:
+        if self._timer.running or self._timer.remaining() > 0.0:
+            self._finish_beep_timer.stop()
+            return
+        self._beep()
+
+    def _stop_finish_beep(self) -> None:
+        self._finish_beep_timer.stop()
 
     def _update_clock_text(self) -> None:
         self._set_time_text(format_clock(datetime.now(), self._use_24h))
@@ -565,6 +592,11 @@ class TimeOverlayWindow(QWidget):
 
     # --------------------------------------------------------------- events
     def eventFilter(self, obj, event) -> bool:
+        if (
+            event.type() == QEvent.Type.MouseButtonPress
+            and self._finish_beep_timer.isActive()
+        ):
+            self._stop_finish_beep()
         if obj is self.container and event.type() == QEvent.Type.Resize:
             self._position_handles()
             return False
@@ -587,6 +619,7 @@ class TimeOverlayWindow(QWidget):
         quit_action = menu.addAction("Quit")
 
         chosen = menu.exec(event.globalPos())
+        self._stop_finish_beep()
         if chosen is center_action:
             self._center_on_screen()
         elif chosen is format_action:
@@ -599,9 +632,13 @@ class TimeOverlayWindow(QWidget):
 
     # -------------------------------------------------------------------- close
     def closeEvent(self, event) -> None:
+        app = QApplication.instance()
+        if app is not None:
+            app.removeEventFilter(self)
         self._tick_timer.stop()
         self._flash_timer.stop()
         self._fit_timer.stop()
+        self._finish_beep_timer.stop()
         self._settings.setValue(self.GEOMETRY_KEY, self.saveGeometry())
         self._settings.sync()
         super().closeEvent(event)
